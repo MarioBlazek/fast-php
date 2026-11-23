@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  spikes:
+    name: PHP ${{ matrix.php }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        php: ["8.2", "8.3", "8.4", "8.5"]
+        include:
+          - os: macos-latest
+            php: "8.5"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: ffi
+          coverage: none
+          tools: none
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+          key: php-${{ matrix.php }}
+      - name: fmt and clippy
+        working-directory: rust
+        run: |
+          cargo fmt --all --check
+          cargo clippy --release --all-targets -- -D warnings
+      - name: Rust tests
+        working-directory: rust
+        run: cargo test --release
+      - name: Spikes (round-trip, observer profiler, crossing cost)
+        run: sh spike/run.sh
