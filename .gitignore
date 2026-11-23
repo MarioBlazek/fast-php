@@ -1,0 +1,4 @@
+/rust/target/
+/vendor/
+/.fast-php/
+.DS_Store

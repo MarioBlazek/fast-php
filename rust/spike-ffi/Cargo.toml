@@ -1,0 +1,17 @@
+[package]
+name = "spike-ffi"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Phase 0 baseline: the same functions behind fast-anything's FFI bridge (JSON array in, {\"ok\": ...} out)."
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[lints.rust]
+unexpected_cfgs = "allow"
