@@ -24,6 +24,20 @@ jobs:
           extensions: ffi
           coverage: none
           tools: none
+      - name: Pin one LLVM for bindgen (Linux)
+        if: runner.os == 'Linux'
+        # ext-php-rs runs bindgen on PHP's headers. The runner has several LLVMs, and loading
+        # libclang from one while taking clang's built-in headers from another breaks on the
+        # SSE intrinsics. Use the newest LLVM that ships a libclang, for both.
+        run: |
+          for d in $(ls -d /usr/lib/llvm-*/ | sort -V -r); do
+            if ls "$d"lib/libclang*.so* >/dev/null 2>&1 && [ -x "$d"bin/clang ]; then
+              echo "LIBCLANG_PATH=${d}lib" >> "$GITHUB_ENV"
+              echo "CLANG_PATH=${d}bin/clang" >> "$GITHUB_ENV"
+              echo "using $d"
+              break
+            fi
+          done
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
