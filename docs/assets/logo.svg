@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <title>fast-php</title>
+  <defs>
+    <linearGradient id="mtile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1E2140"/><stop offset="1" stop-color="#111325"/>
+    </linearGradient>
+    <linearGradient id="mhot" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFB347"/><stop offset="1" stop-color="#F74C00"/>
+    </linearGradient>
+    <radialGradient id="mglow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#F74C00" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#F74C00" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="msoft" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+    <clipPath id="mclip"><rect x="32" y="32" width="960" height="960" rx="216"/></clipPath></defs>
+  <rect x="32" y="32" width="960" height="960" rx="216" fill="url(#mtile)"/>
+  <rect x="33.5" y="33.5" width="957" height="957" rx="214.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.07" stroke-width="3"/>
+  <g clip-path="url(#mclip)">
+  <path d="M457.7 232.5 A290 290 0 0 1 687.3 370.5 L591.8 429.0 A178 178 0 0 0 450.9 344.3 Z" fill="#8892BF" stroke="#8892BF" stroke-width="14" stroke-linejoin="round"/>
+  <path d="M569.4 781.5 A290 290 0 0 1 387.2 807.1 L407.6 697.0 A178 178 0 0 0 519.4 681.3 Z" fill="#4F5B93" stroke="#4F5B93" stroke-width="14" stroke-linejoin="round"/>
+  <path d="M352.8 798.6 A290 290 0 0 1 154.0 569.9 L264.4 551.4 A178 178 0 0 0 386.5 691.8 Z" fill="#A3AAD6" stroke="#A3AAD6" stroke-width="14" stroke-linejoin="round"/>
+  <path d="M150.3 534.6 A290 290 0 0 1 233.2 318.7 L313.0 397.2 A178 178 0 0 0 262.2 529.8 Z" fill="#6A72AE" stroke="#6A72AE" stroke-width="14" stroke-linejoin="round"/>
+  <path d="M259.5 295.0 A290 290 0 0 1 422.3 232.5 L429.1 344.3 A178 178 0 0 0 329.2 382.7 Z" fill="#777BB4" stroke="#777BB4" stroke-width="14" stroke-linejoin="round"/>
+  <circle cx="743.8" cy="609.1" r="230" fill="url(#mglow)"/>
+  <path d="M624.9 487.7 l44.2 12.7" stroke="#FFB347" stroke-opacity="0.45" stroke-width="14" stroke-linecap="round"/>
+  <path d="M620.7 573.8 l59.6 17.1" stroke="#FFB347" stroke-opacity="0.7" stroke-width="14" stroke-linecap="round"/>
+  <path d="M578.6 649.0 l44.2 12.7" stroke="#FFB347" stroke-opacity="0.45" stroke-width="14" stroke-linecap="round"/>
+  <path d="M783.5 409.7 A312 312 0 0 1 671.8 799.3 L610.0 705.9 A200 200 0 0 0 681.6 456.2 Z" fill="#F74C00" opacity="0.6" filter="url(#msoft)"/>
+  <path d="M783.5 409.7 A312 312 0 0 1 671.8 799.3 L610.0 705.9 A200 200 0 0 0 681.6 456.2 Z" fill="url(#mhot)" stroke="url(#mhot)" stroke-width="14" stroke-linejoin="round"/>
+  <circle cx="853.4" cy="551.4" r="13" fill="#FFB347"/>
+  <circle cx="881.1" cy="620.2" r="9" fill="#FFB347"/>
+  <circle cx="915.6" cy="539.1" r="6" fill="#FFB347"/>
+  </g>
+  <path d="M422 460 L348 522 L422 584" fill="none" stroke="#C9CDEB" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M462 482 C462 430 544 430 544 484 C544 520 498 518 498 552" fill="none" stroke="#C9CDEB" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="498" cy="604" r="19" fill="#C9CDEB"/>
+</svg>

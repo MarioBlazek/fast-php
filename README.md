@@ -1,6 +1,11 @@
-# fast-php
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/wordmark-dark.svg">
+    <img src="docs/assets/wordmark-light.svg" alt="fast-php" width="560">
+  </picture>
+</p>
 
-**Find the slow 5% of a PHP app, port only that to Rust, prove it behaves the same, and swap it in as a native extension.**
+<p align="center"><b>Find the slow 5% of a PHP app, port only that to Rust, prove it behaves the same, and swap it in as a native extension.</b></p>
 
 fast-php is a PHP-first take on [fast-anything](https://github.com/EL4CTEO/fast-anything). The idea is the same: profile the app, let a coding agent port only the hot functions to Rust, replay real recorded calls to prove the port is right, and enable it reversibly. The parts that matter for PHP are rebuilt:
 
@@ -43,6 +48,7 @@ rust/spike-ffi         fast-anything's FFI + JSON bridge, for comparison
 spike/                 round-trip check, crossing-cost benchmark, runner
 examples/              apps used as fixtures
 docs/                  plan and phase results
+scripts/logo.py        draws the logo, wordmarks and social card (docs/assets)
 ```
 
 ## License
