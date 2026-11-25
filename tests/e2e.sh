@@ -10,7 +10,8 @@ cp "$root"/examples/fuzzy-dedupe-cli/*.php "$work"/
 cd "$work"
 # Share one cargo cache between runs (CI caches rust/target).
 export FAST_PHP_TARGET_DIR="${FAST_PHP_TARGET_DIR:-$root/rust/target/e2e}"
-fp() { php -n "$root/bin/fast-php" "$@"; }
+# The tool itself runs with php.ini (php-parser needs ext-tokenizer); its timed runs use -n.
+fp() { php "$root/bin/fast-php" "$@"; }
 
 fp doctor
 fp scan -- php app.php
