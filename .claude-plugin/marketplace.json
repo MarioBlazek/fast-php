@@ -1,0 +1,17 @@
+{
+  "name": "fast-php",
+  "owner": {
+    "name": "Mario Blažek"
+  },
+  "metadata": {
+    "description": "fast-php: find the hot functions of a PHP app, port them to Rust, prove they behave the same, swap them in as a native extension."
+  },
+  "plugins": [
+    {
+      "name": "fast-php",
+      "source": "./plugin",
+      "description": "Speed up a PHP app with fast-php: profile it, port the hot functions to Rust as a native extension, verify every recorded call with ===, enable, benchmark.",
+      "category": "development"
+    }
+  ]
+}

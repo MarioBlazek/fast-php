@@ -17,19 +17,20 @@ fast-php is a PHP-first take on [fast-anything](https://github.com/EL4CTEO/fast-
 
 ## Status
 
-**Phase 3 is done** ([docs/phase-3.md](docs/phase-3.md)): web apps.
-- **`scan --web requests.http`:** replays `.http`, URL-list or HAR requests against `php -S`, warmed up, with workers.
-- **Sharded recording:** across requests and workers.
-- **`bench`:** p50/p95/requests per second with and without the ports, and every response must be identical. `--url` does the same against your FPM, before and after.
-- **`install`:** checks each PHP-FPM can load the extension and writes its ini line.
-- **Laravel:** checked end to end in CI.
+**Phase 4 is done** ([docs/phase-4.md](docs/phase-4.md)): the agent loop.
+- **`fast-php go --agent claude|codex|'<command>'`:** scan, record, the agent writes the port, then verify. A failure goes back to the agent as feedback for the next attempt. Then enable, bench and report.
+- **`fast-php report`:** `report.md` and `report.svg`.
+- **A Claude Code plugin:** `/fast-php:fast` and the `fast-php` skill.
+
+On the shop example, `go --agent claude` wrote a port that passed verify on the first attempt, in 101 s.
 
 Earlier phases:
+- [Phase 3](docs/phase-3.md): web apps. Requests are replayed against `php -S`; bench reports p50/p95 against plain PHP or your FPM; `install` adds the extension to FPM; Laravel runs end to end.
 - [Phase 2](docs/phase-2.md): `fastphp-std` (PHP's builtins in Rust, fuzzed against PHP 8.2–8.5), PHPDoc types, instance methods, exception and warning parity.
 - [Phase 1](docs/phase-1.md): the CLI pipeline.
 - [Phase 0](docs/phase-0.md): spikes.
 
-The plan is in [docs/plan.md](docs/plan.md). Coding-agent runs are Phase 4.
+The plan is in [docs/plan.md](docs/plan.md).
 
 The examples, JIT on:
 
@@ -62,6 +63,20 @@ vendor/bin/fast-php bench                                   # whole app, with an
 vendor/bin/fast-php disable Fuzzy_findDuplicates            # source back byte for byte
 ```
 
+Or all of it in one go, with a coding agent writing the Rust and retrying on verify's failures:
+
+```sh
+vendor/bin/fast-php go --agent claude -- php bin/import.php data.csv     # or --agent codex, or any command
+```
+
+In Claude Code, the plugin does the same inside your session:
+
+```
+/plugin marketplace add MarioBlazek/fast-php
+/plugin install fast-php@fast-php
+/fast-php:fast -- php bin/import.php data.csv
+```
+
 A web app is the same, with requests instead of a script:
 
 ```sh
@@ -88,7 +103,7 @@ Highlights from Phase 0, PHP 8.5, time per call:
 composer install
 vendor/bin/phpunit       # patcher, comparator, types, PHPDoc, analysis
 sh tests/std/run.sh      # fastphp-std against this PHP: differential fuzzing
-sh tests/e2e.sh          # the whole pipeline on every example, each with a wrong port that must fail verify
+sh tests/e2e.sh          # every example (a wrong port must fail verify) and `go` with a stand-in agent
 sh tests/laravel/smoke.sh  # the web pipeline on a fresh Laravel app (needs network for composer)
 sh spike/run.sh          # Phase 0: exact round-trips, observer profiler, crossing costs
 ```
@@ -103,7 +118,10 @@ src/Port               type inference, crate scaffolding, TASK.md
 src/Verify             StrictComparator (=== with NAN and -0.0 handled)
 src/Workload           what runs: a CLI script, or requests replayed against php -S
 src/Web                request files (.http, URL lists, HAR), HTTP client, php -S with workers
-src/Cli                doctor, scan, port, verify, enable, disable, bench, install, status
+src/Agent              coding agents for `go` (claude, codex, any command) and the guard on what they change
+src/Report             report.md and report.svg
+src/Cli                doctor, scan, port, verify, enable, disable, bench, install, go, report, status
+plugin/                the Claude Code plugin: /fast-php:fast and the fast-php skill
 res/rec.php            the recorder (auto_prepend_file during `port`)
 res/replay.php         the PHP side of `verify`
 rust/fastphp-value     exact PHP values in Rust + fast zval reads/writes for generated glue

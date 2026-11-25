@@ -45,6 +45,12 @@ final class DoctorCommand extends Base
         $jit = Process::run([...$php->base(), ...Php::JIT, '-r', 'echo json_encode(function_exists("opcache_get_status") ? (opcache_get_status(false)["jit"]["on"] ?? false) : false);']);
         $this->check(trim($jit->stdout) === 'true', 'opcache JIT', 'The JIT doesn\'t turn on with opcache.jit=tracing. fast-php can still work, but its baseline would be slower than your production.');
 
+        // Only `fast-php go` needs one, so a missing agent isn't a problem.
+        $agents = array_filter(['claude' => 'Claude Code', 'codex' => 'Codex'], fn (string $label, string $bin) => $this->which($bin) !== null, ARRAY_FILTER_USE_BOTH);
+        $this->io->writeln($agents
+            ? '  <info>✓</info> coding agents for `fast-php go`: ' . implode(', ', $agents)
+            : '  <comment>!</comment> No coding agent found (claude, codex). `fast-php go --agent \'<command>\'` takes any other; or write port.rs yourself.');
+
         if ($this->problems === 0) {
             $this->io->success('Ready.');
             return self::SUCCESS;

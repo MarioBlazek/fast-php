@@ -13,6 +13,12 @@ use FastPhp\Project;
  */
 final class Cargo
 {
+    /**
+     * Capture the compiler's output and put it in the exception when a build fails, instead of
+     * streaming it: `fast-php go` hands it back to the coding agent.
+     */
+    public static bool $captureErrors = false;
+
     public function __construct(private readonly Project $project)
     {
     }
@@ -62,9 +68,10 @@ final class Cargo
     {
         // cargo reads .cargo/config.toml (macOS link flags) from the directory it runs in.
         $cmd = ['cargo', 'build', '--release', '--quiet', '--target-dir', $this->target(), ...$args];
-        $p = Process::run($cmd, $dir, self::env(), passthru: true);
+        $p = Process::run($cmd, $dir, self::env(), passthru: !self::$captureErrors);
         if ($p->exit !== 0) {
-            throw new \RuntimeException('cargo build failed (' . Process::quote($cmd) . " in $dir).");
+            $errors = self::$captureErrors ? "\n" . implode("\n", array_slice(explode("\n", trim($p->stderr)), -120)) : '';
+            throw new \RuntimeException('cargo build failed (' . Process::quote($cmd) . " in $dir)." . $errors);
         }
     }
 

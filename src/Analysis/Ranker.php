@@ -41,6 +41,7 @@ final class Ranker
                 'portable' => !$why,
                 'blockers' => $why,
                 'helpers' => array_values(array_map(static fn (Func $h) => $h->display(), $cb->reachable($f))),
+                'builtins' => array_values(array_unique(array_merge(array_keys($f->builtins), ...array_values(array_map(static fn (Func $h) => array_keys($h->builtins), $cb->reachable($f)))))),
                 'verdict' => '',
             ];
         }

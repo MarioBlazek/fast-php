@@ -18,11 +18,13 @@ abstract class Base extends Command
     protected Php $php;
     protected Cargo $cargo;
     protected SymfonyStyle $io;
+    protected OutputInterface $output;
 
     abstract protected function handle(InputInterface $in): int;
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        $this->output = $output;
         $this->io = new SymfonyStyle($input, $output);
         $this->project = Project::here();
         $this->php = new Php(getenv('FAST_PHP_BINARY') ?: PHP_BINARY);

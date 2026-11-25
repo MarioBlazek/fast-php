@@ -139,8 +139,11 @@ Project working dir: `.fast-php/` holds `state.json`, `ports/<id>/` (one crate e
 - **[phase 3]** FPM is benchmarked (`bench --url`, before/after) and installed into, but profiling and recording still
   run under `php -S`.
 
-**Phase 4: agent loop and polish**
+**Phase 4: agent loop and polish. Done, see [phase-4.md](phase-4.md).**
 - `go --agent`, retry loop with verify feedback, report/SVG, Claude Code plugin + slash command (mirroring upstream `commands/fast.md` / `skills/`).
+- **[phase 4]** The agent may change only port.rs; everything else it touches is restored, and only fast-php's own verify
+  counts. Claude Code may run nothing but verify; Codex runs in its workspace-write sandbox; any other CLI fits as a
+  shell command with FASTPHP_* variables.
 
 ## What to reuse from upstream (MIT, credit in NOTICE)
 - `src/hotspot.rs` `rank()` (outermost portable caller, the `WORTH_IT=0.02` threshold): port it to PHP.

@@ -20,8 +20,9 @@ final class Process
      * @param list<string>               $cmd
      * @param array<string, string>|null $env extra variables on top of the current environment
      * @param bool                       $passthru stream stderr to ours (long builds)
+     * @param float|null                 $timeout  seconds before the process is killed (exit 124)
      */
-    public static function run(array $cmd, ?string $cwd = null, ?array $env = null, bool $passthru = false): self
+    public static function run(array $cmd, ?string $cwd = null, ?array $env = null, bool $passthru = false, ?float $timeout = null): self
     {
         $spec = [0 => ['file', '/dev/null', 'r'], 1 => ['pipe', 'w'], 2 => $passthru ? STDERR : ['pipe', 'w']];
         $fullEnv = $env === null ? null : array_merge(getenv(), $env);
@@ -40,6 +41,14 @@ final class Process
             stream_set_blocking($pipes[2], false);
             $open = [1 => $pipes[1], 2 => $pipes[2]];
             while ($open) {
+                if ($timeout !== null && (hrtime(true) - $start) / 1e9 > $timeout) {
+                    proc_terminate($proc, 9);
+                    foreach ($pipes as $pipe) {
+                        fclose($pipe);
+                    }
+                    proc_close($proc);
+                    return new self(124, $out, $err . "\n[killed after {$timeout} s]", (hrtime(true) - $start) / 1e9);
+                }
                 $read = array_values($open);
                 $w = $e = null;
                 if (stream_select($read, $w, $e, 1) === false) {

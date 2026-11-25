@@ -100,11 +100,15 @@ final class ScanCommand extends Base
         [$withBuiltins, $wall2] = $this->readProfiles($dir, $warm);
         $own = [];
         $cum = [];
+        $builtinOwn = [];
         $io = 0.0;
         $autoload = 0.0;
         foreach ($withBuiltins as $fn) {
             $key = strtolower(($fn['class'] !== null ? $fn['class'] . '::' : '') . $fn['name']);
             if ($fn['internal']) {
+                if ($fn['class'] === null) {
+                    $builtinOwn[strtolower($fn['name'])] = ($builtinOwn[strtolower($fn['name'])] ?? 0) + $fn['own'];
+                }
                 if (self::waits($fn['class'], $fn['name'])) {
                     $io += $fn['cum'];
                 }
@@ -129,6 +133,10 @@ final class ScanCommand extends Base
                 $php += $own[strtolower($h)] ?? 0;
             }
             $rows[$i]['builtinShare'] = max(0.0, min(1.0, 1 - $php / $total));
+            // The builtins it calls that took the most time in this run (anyone may have called them).
+            $mine = array_intersect_key($builtinOwn, array_flip($rows[$i]['builtins'] ?? []));
+            arsort($mine);
+            $rows[$i]['topBuiltins'] = array_keys(array_slice(array_filter($mine, static fn ($t) => $t > 0), 0, 3, true));
         }
         $ioShare = $wall2 > 0 ? min(1.0, $io / $wall2) : 0.0;
         $autoloadShare = $wall2 > 0 ? min(1.0, $autoload / $wall2) : 0.0;
@@ -166,7 +174,9 @@ final class ScanCommand extends Base
         $top = $picks[0];
         $this->io->success(sprintf('Port %s first: %s of the run%s.', $top['name'], self::pct($top['share']), $top['helpers'] ? ', including ' . implode(', ', $top['helpers']) : ''));
         if (($top['builtinShare'] ?? 0) >= 0.5) {
-            $this->io->note(sprintf('%s of its time is inside PHP builtins (%s), which are C already. The port wins on the PHP loops around them; expect a smaller speedup than the share suggests.', self::pct($top['builtinShare']), 'preg_*, explode(), number_format() and the like'));
+            $names = array_map(static fn (string $b) => "$b()", $top['topBuiltins'] ?? []);
+            $this->io->note(sprintf('%s of its time is inside PHP builtins%s, which are C already. A port gains on the PHP code around them; expect a smaller speedup than the share suggests.',
+                self::pct($top['builtinShare']), $names ? ' (mostly ' . implode(', ', $names) . ')' : ''));
         }
         $this->io->writeln("Next: <info>vendor/bin/fast-php port {$top['id']}</info>");
         return self::SUCCESS;

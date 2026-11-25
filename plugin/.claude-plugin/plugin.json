@@ -1,0 +1,12 @@
+{
+  "name": "fast-php",
+  "version": "0.1.0",
+  "description": "Speed up a PHP app with fast-php: profile it, port the hot functions to Rust as a native extension, verify every recorded call with ===, enable, benchmark.",
+  "author": {
+    "name": "Mario Blažek"
+  },
+  "homepage": "https://github.com/MarioBlazek/fast-php",
+  "repository": "https://github.com/MarioBlazek/fast-php",
+  "license": "MIT",
+  "keywords": ["php", "rust", "performance", "profiling", "php-extension"]
+}

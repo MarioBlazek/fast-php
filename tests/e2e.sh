@@ -76,3 +76,31 @@ fi
 if [ -z "$only" ] || [ "$only" = shop-web ]; then
     run shop-web Shop_Bundles_cheapest src/Bundles.php shop-wrong-port.rs "--web requests.http --workers 2 -- php -S localhost:8000 -t public"
 fi
+
+# fast-php go with a stand-in agent: the first attempt is wrong and touches glue.rs, the second,
+# given FEEDBACK.md, is right. go must retry, put glue.rs back, enable, bench and report.
+if [ -z "$only" ] || [ "$only" = go ]; then
+    echo
+    echo "######## go (fuzzy-dedupe-cli, stand-in agent)"
+    work=$(mktemp -d)
+    cp -R "$root/examples/fuzzy-dedupe-cli/." "$work/"
+    rm -rf "$work/reference"
+    cd "$work"
+    FAKE_AGENT_WRONG="$root/tests/fixtures/fuzzy-wrong-port.rs" FAKE_AGENT_RIGHT="$root/examples/fuzzy-dedupe-cli/reference/port.rs" \
+        fp go --agent "sh $root/tests/fixtures/fake-agent.sh" -- php app.php
+    port=.fast-php/ports/Fuzzy_findDuplicates
+    test -f $port/agent-1.log && test -f $port/agent-2.log && test ! -f $port/agent-3.log
+    if grep -q "changed by the agent" $port/src/glue.rs; then
+        echo "FAIL: go left the agent's change to glue.rs"
+        exit 1
+    fi
+    grep -q "fast-php:Fuzzy_findDuplicates" fuzzy.php
+    grep -q "Fuzzy_findDuplicates" .fast-php/report.md
+    grep -q "<svg" .fast-php/report.svg
+    echo "ok   go: retried with feedback, restored glue.rs, enabled, benched, reported"
+    fp disable --all
+    cmp fuzzy.php "$root/examples/fuzzy-dedupe-cli/fuzzy.php"
+    cd "$root"
+    rm -rf "$work"
+fi
+

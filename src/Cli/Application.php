@@ -22,6 +22,8 @@ final class Application extends Console
             new BenchCommand(),
             new StatusCommand(),
             new InstallCommand(),
+            new GoCommand(),
+            new ReportCommand(),
         ]);
     }
 }
