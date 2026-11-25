@@ -25,7 +25,7 @@ final class EnableCommand extends Base
     {
         $native = $port['native'];
         $quoted = var_export($native, true);
-        $args = implode(', ', array_map(static fn ($p) => '$' . $p['name'], $port['params']));
+        $args = implode(', ', array_map(static fn ($p) => $p['expr'] ?? '$' . $p['name'], $port['params']));
         return $port['fallback']
             ? "if (\\function_exists($quoted) && null !== \$__fastphp = \\$native($args)) return \$__fastphp;"
             : "if (\\function_exists($quoted)) return \\$native($args);";

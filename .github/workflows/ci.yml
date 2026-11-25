@@ -57,7 +57,9 @@ jobs:
         run: composer install --no-interaction --no-progress
       - name: PHPUnit
         run: vendor/bin/phpunit
+      - name: fastphp-std against this PHP (differential fuzzing)
+        run: sh tests/std/run.sh 2000
       - name: Spikes (round-trip, observer profiler, crossing cost)
         run: sh spike/run.sh
-      - name: End to end (scan, wrong port rejected, port, verify, enable, bench, disable)
+      - name: End to end on both examples (scan, wrong port rejected, port, verify, enable, bench, disable)
         run: sh tests/e2e.sh

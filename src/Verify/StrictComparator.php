@@ -50,6 +50,13 @@ final class StrictComparator
             }
             return null;
         }
+        if (is_string($want) && $want !== $got) {
+            // Show where they part, not just how they start.
+            $at = strspn($want ^ $got, "\0");
+            $from = max(0, $at - 20);
+            $cut = static fn (string $s) => ($from > 0 ? '…' : '') . self::short(substr($s, $from, 50));
+            return "$path: strings differ at byte $at (of " . strlen($want) . ' vs ' . strlen($got) . '): expected ' . $cut($want) . ', got ' . $cut($got);
+        }
         if (is_object($want)) {
             return $want == $got ? null : "$path: objects differ";
         }

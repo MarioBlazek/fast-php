@@ -32,7 +32,7 @@ final class PortCommand extends Base
     {
         $hot = $project->hotspot($id);
         $files = array_values(array_unique(array_map(static fn ($r) => $project->abs($r['file']), $project->state['scan']['functions'])));
-        $cb = Codebase::load($files);
+        $cb = Codebase::load($files, \FastPhp\Analysis\ComposerMap::forProject($project->root));
         foreach ($cb->funcs as $f) {
             if ($f->id() === $hot['id']) {
                 return [$cb, $f];
@@ -41,9 +41,13 @@ final class PortCommand extends Base
         throw new \RuntimeException("{$hot['name']} is no longer in {$hot['file']}. Run the scan again.");
     }
 
+    /** @var list<string> properties an instance method reads */
+    private array $props = [];
+
     protected function handle(InputInterface $in): int
     {
         [$cb, $f] = self::locate($this->project, $in->getArgument('id'));
+        $this->props = $f->static ? [] : $cb->props($f);
         $id = $f->id();
         $why = Ranker::blockers($cb, $f);
         if ($why && !$in->getOption('force')) {
@@ -97,8 +101,14 @@ final class PortCommand extends Base
         $marker = 'rec:' . $f->id();
         $id = var_export($f->id(), true);
         $args = '[' . implode(', ', array_map(static fn ($p) => '$' . $p['name'], $f->params)) . ']';
-        $target = $f->class !== null ? "self::{$f->name}" : '\\' . $f->name;
-        $prologue = "if (\\class_exists('FastPhp\\\\Runtime\\\\Rec', false) && \\FastPhp\\Runtime\\Rec::on($id)) return \\FastPhp\\Runtime\\Rec::call($id, static fn (...\$__fastphp) => $target(...\$__fastphp), $args);";
+        if ($f->static) {
+            $target = $f->class !== null ? "self::{$f->name}" : '\\' . $f->name;
+            $call = "static fn (...\$__fastphp) => $target(...\$__fastphp), $args";
+        } else {
+            $props = implode(', ', array_map(static fn ($p) => "\$this->$p", $this->props));
+            $call = "fn (...\$__fastphp) => \$this->{$f->name}(...\$__fastphp), $args, fn () => [$props]";
+        }
+        $prologue = "if (\\class_exists('FastPhp\\\\Runtime\\\\Rec', false) && \\FastPhp\\Runtime\\Rec::on($id)) return \\FastPhp\\Runtime\\Rec::call($id, $call);";
 
         $before = (string) file_get_contents($f->file);
         $this->project->state['recording'][$file] = ['marker' => $marker];
@@ -109,7 +119,7 @@ final class PortCommand extends Base
         try {
             $this->patch($file, static fn (string $code) => Patcher::insert($code, $f->class, $f->name, $marker, $prologue));
             $w = $this->project->workload();
-            $cmd = $this->php->command($this->project->abs($w['script']), $w['args'], [], false, [...$w['php'], '-d', 'auto_prepend_file=' . Project::toolRoot() . '/res/rec.php']);
+            $cmd = $this->php->command($this->project->abs($w['script']), $w['args'], [], false, [...$w['php'], '-d', 'auto_prepend_file=' . Project::toolRoot() . '/res/rec.php', '-d', 'memory_limit=-1']);
             $p = Process::run($cmd, $this->project->root, ['FASTPHP_REC_DIR' => $shards, 'FASTPHP_REC_MAX' => (string) $max]);
             if ($p->exit !== 0) {
                 throw new \RuntimeException("The recording run failed (exit {$p->exit}):\n" . trim($p->stderr ?: $p->stdout));

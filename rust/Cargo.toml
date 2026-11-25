@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["fastphp-value", "fastphp-runtime", "spike-ext", "spike-ffi"]
+members = ["fastphp-value", "fastphp-std", "fastphp-runtime", "std-check", "spike-ext", "spike-ffi"]
 
 [workspace.package]
 edition = "2024"

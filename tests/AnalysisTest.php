@@ -46,7 +46,6 @@ final class AnalysisTest extends TestCase
         $expect = [
             'cached' => 'static properties',
             'makesObjects' => 'creates objects',
-            'instance' => 'instance method',
             'byRef' => 'by reference',
             'random' => 'mt_rand',
             'prints' => 'prints output',
@@ -57,6 +56,18 @@ final class AnalysisTest extends TestCase
             self::assertNotEmpty($b, $name);
             self::assertStringContainsString($why, implode("\n", $b), $name);
         }
+    }
+
+    public function testInstanceMethodsThatOnlyReadProperties(): void
+    {
+        self::assertSame([], self::blockers('Fixture\Text', 'instance'));
+        $total = self::$cb->find('Fixture\Pricing', 'total');
+        self::assertSame([], self::blockers('Fixture\Pricing', 'total'));
+        self::assertSame(['digits', 'rate'], self::$cb->props($total), 'helper properties included');
+        self::assertSame('float', self::$cb->propType('Fixture\Pricing', 'rate'));
+        self::assertStringContainsString('writes to $this->cache', implode("\n", self::blockers('Fixture\Pricing', 'remembers')));
+        self::assertStringContainsString('writes to $this->cache', implode("\n", self::blockers('Fixture\Pricing', 'sortsInPlace')));
+        self::assertStringContainsString('uses $this as a value', implode("\n", self::blockers('Fixture\Pricing', 'passesThis')));
     }
 
     public function testHelpersPassTheirBlockersOn(): void

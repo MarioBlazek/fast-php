@@ -33,7 +33,7 @@ final class DoctorCommand extends Base
         $rustc = $this->which('rustc');
         $rv = $rustc ? trim(Process::run([$rustc, '--version'])->stdout) : '';
         preg_match('/(\d+\.\d+)/', $rv, $m);
-        $this->check($rustc !== null && version_compare($m[1] ?? '0', '1.85', '>='), $rv ?: 'Rust', 'Install Rust 1.85 or newer from https://rustup.rs');
+        $this->check($rustc !== null && version_compare($m[1] ?? '0', '1.88', '>='), $rv ?: 'Rust', 'Install Rust 1.88 or newer from https://rustup.rs');
         $this->check($this->which('cargo') !== null, 'cargo', 'cargo is missing; install Rust from https://rustup.rs');
 
         $this->libclang();

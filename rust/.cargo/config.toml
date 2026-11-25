@@ -4,3 +4,7 @@ rustflags = ["-C", "link-arg=-undefined", "-C", "link-arg=dynamic_lookup"]
 
 [target.x86_64-pc-windows-msvc]
 linker = "rust-lld"
+
+[env]
+# fastphp-std builds PCRE2 into each extension: no runtime dependency on a system libpcre2.
+PCRE2_SYS_STATIC = "1"

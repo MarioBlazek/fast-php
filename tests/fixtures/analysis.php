@@ -71,6 +71,43 @@ final class Text
     }
 }
 
+final class Pricing
+{
+    private array $cache = [];
+
+    public function __construct(private readonly float $rate, private readonly int $digits = 2)
+    {
+    }
+
+    /** Reads $this->rate and, through a helper, $this->digits. */
+    public function total(array $prices): float
+    {
+        return $this->roundIt(array_sum($prices) * (1 + $this->rate));
+    }
+
+    private function roundIt(float $v): float
+    {
+        return round($v, $this->digits);
+    }
+
+    public function remembers(string $k): int
+    {
+        $this->cache[$k] = 1;
+        return count($this->cache);
+    }
+
+    public function sortsInPlace(): array
+    {
+        sort($this->cache);
+        return $this->cache;
+    }
+
+    public function passesThis(): string
+    {
+        return spl_object_hash($this) . serialize($this);
+    }
+}
+
 function helper(string $s): string
 {
     return $s . '-';

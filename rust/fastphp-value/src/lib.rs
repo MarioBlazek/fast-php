@@ -11,7 +11,7 @@ use ext_php_rs::exception::PhpException;
 use ext_php_rs::flags::DataType;
 use ext_php_rs::types::{ArrayKey, ZendHashTable, ZendStr, Zval};
 use ext_php_rs::zend::ClassEntry;
-use indexmap::IndexMap;
+pub use indexmap::IndexMap;
 use std::fmt;
 
 /// A PHP string: bytes, not necessarily UTF-8.
@@ -166,6 +166,19 @@ impl PhpArray {
 
     pub fn into_entries(self) -> impl Iterator<Item = (PhpKey, PhpValue)> {
         self.entries.into_iter()
+    }
+
+    /// An array from key/value pairs in order (a later duplicate key overwrites in place).
+    pub fn from_entries(entries: impl IntoIterator<Item = (PhpKey, PhpValue)>) -> Self {
+        let mut a = PhpArray::new();
+        for (k, v) in entries {
+            a.insert(k, v);
+        }
+        a
+    }
+
+    pub fn keys(&self) -> impl Iterator<Item = &PhpKey> {
+        self.entries.keys()
     }
 
     /// `array_is_list()`: keys are 0, 1, 2, ... in order.
@@ -439,6 +452,10 @@ mod tests {
 pub mod out;
 pub mod raw;
 pub use out::{IntoPhp, Ret};
+
+/// A PHP array with values of one type (array<K, V> in PHPDoc): keys and their order as PHP
+/// had them.
+pub type Map<V> = IndexMap<PhpKey, V>;
 pub use raw::FromPhp;
 
 /// Reads argument `n` (1-based, for the message) of a port, or throws PHP's TypeError.

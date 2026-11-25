@@ -1,7 +1,7 @@
 # fast-php: plan
 
-> Phases 0 and 1 are done; their results are in [phase-0.md](phase-0.md) and
-> [phase-1.md](phase-1.md), and changed a few details below (marked **[phase 0]** / **[phase 1]**).
+> Phases 0–2 are done; their results are in [phase-0.md](phase-0.md), [phase-1.md](phase-1.md)
+> and [phase-2.md](phase-2.md), and changed a few details below (marked **[phase N]**).
 
 ## Context
 
@@ -120,8 +120,14 @@ Project working dir: `.fast-php/` holds `state.json`, `ports/<id>/` (one crate e
   deriver exists in a first form (sizes, shrunk elements, whitespace/case decorations, int neighbours).
 - **[phase 1]** The source-instrumentation profiler fallback is not built: the observer profiler has worked everywhere so far.
 
-**Phase 2: correctness depth**
+**Phase 2: correctness depth. Done, see [phase-2.md](phase-2.md).**
 - fastphp-std + differential fuzz, PHPDoc types, cross-file helpers, readonly instance methods, edge-case deriver, exception parity.
+- **[phase 2]** fastphp-std follows php-src, not the manual, and version-gates what changed between 8.2 and 8.5. Where
+  even patch releases differ (round() from 2^52 up) or PHP's result depends on its algorithm (sorting mixed types), it
+  declines and PHP runs the call.
+- **[phase 2]** Warnings are part of parity: an input on which the original warns must fall back to PHP.
+- **[phase 2]** A port of builtin-heavy code gains little (the builtins are C already); scan measures and reports the
+  builtin share of each candidate. Zero-copy string arguments are the next speed lever.
 
 **Phase 3: web workloads**
 - `php -S` launcher with a router (index.php), request file format (method/url/headers/body; HAR import), sharded recording, web bench (with `--url` for real FPM), `install` command, FPM restart notes.

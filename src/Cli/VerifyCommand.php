@@ -18,7 +18,8 @@ final class VerifyCommand extends Base
     protected function configure(): void
     {
         $this->addArgument('id', InputArgument::REQUIRED, 'Port id')
-            ->addOption('budget', null, InputOption::VALUE_REQUIRED, 'Seconds for the per-call benchmark', '2');
+            ->addOption('budget', null, InputOption::VALUE_REQUIRED, 'Seconds for the per-call benchmark', '2')
+            ->addOption('loose-messages', null, InputOption::VALUE_NONE, 'Accept exceptions of the right class with a different message');
     }
 
     protected function handle(InputInterface $in): int
@@ -36,7 +37,9 @@ final class VerifyCommand extends Base
             $copy = $this->project->path('tmp', "original-$id.php");
             @mkdir(dirname($copy), 0777, true);
             file_put_contents($copy, Patcher::stripAll((string) file_get_contents($file)));
-            $original = ['file' => $copy, 'class' => $port['class'], 'function' => $port['function']];
+            $original = ['file' => $copy, 'class' => $port['class'], 'function' => $port['function'],
+                'instance' => $port['instance'] ?? false, 'props' => $port['props'] ?? [], 'nargs' => $port['nargs'] ?? count($port['params']),
+                'autoload' => is_file($this->project->root . '/vendor/autoload.php') ? $this->project->root . '/vendor/autoload.php' : null];
         }
         $cfg = $this->project->path('tmp', "verify-$id.json");
         file_put_contents($cfg, json_encode([
@@ -45,10 +48,12 @@ final class VerifyCommand extends Base
             'fallback' => $port['fallback'],
             'original' => $original,
             'budget' => (float) $in->getOption('budget'),
+            'looseMessages' => (bool) $in->getOption('loose-messages'),
         ], JSON_UNESCAPED_SLASHES));
 
         $this->io->section('Replaying ' . ($port['recorded'] + $port['derived']) . ' calls');
-        $p = Process::run($this->php->command(Project::toolRoot() . '/res/replay.php', [$cfg], [$so], true));
+        // The replay holds every case and both answers at once: no memory limit.
+        $p = Process::run($this->php->command(Project::toolRoot() . '/res/replay.php', [$cfg], [$so], true, ['-d', 'memory_limit=-1']));
         $lines = array_filter(explode("\n", trim($p->stdout)));
         $r = json_decode((string) end($lines), true);
         if (!is_array($r) || isset($r['error'])) {
@@ -71,6 +76,8 @@ final class VerifyCommand extends Base
             $b = $r['bench'];
             $speedup = $b['php'] / max($b['native'], 1e-12);
             $this->io->writeln(sprintf('  per call: PHP %s, native %s (%.1f×)%s', self::ms($b['php']), self::ms($b['native']), $speedup, $b['jit'] ? ', JIT on' : ''));
+        } elseif ($r['benchSkipped'] ?? null) {
+            $this->io->writeln("  per-call benchmark skipped: {$r['benchSkipped']}. `fast-php bench` times the whole app.");
         } else {
             $this->io->writeln("  {$port['file']} does more than declare functions, so the per-call benchmark is skipped; `fast-php bench` times the whole app.");
         }

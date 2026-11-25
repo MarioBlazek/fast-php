@@ -14,6 +14,10 @@ final class Func
     public array $calls = [];
     /** @var array<string, true> builtin functions it calls, lowercase */
     public array $builtins = [];
+    /** @var array<string, true> properties read through $this->name (instance methods) */
+    public array $props = [];
+    /** @var array{params: array<string, string|array>, return: string|array|null} PHPDoc types (DocTypes shapes) */
+    public array $doc = ['params' => [], 'return' => null];
 
     /**
      * @param list<array{name: string, type: ?string, default: ?string, byRef: bool, variadic: bool}> $params

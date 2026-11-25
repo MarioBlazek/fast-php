@@ -22,25 +22,56 @@ final class Codebase
     public array $funcs = [];
     /** @var array<string, string> file => source */
     public array $sources = [];
+    /** @var array<string, array{props: array<string, array{type: ?string, readonly: bool}>, magicGet: bool, final: bool}> by lowercase class name */
+    public array $classes = [];
 
-    /** @param list<string> $files */
-    public static function load(array $files): self
+    /**
+     * @param list<string> $files the files to analyse
+     * @param ComposerMap|null $autoload follows calls into classes defined in other files
+     */
+    public static function load(array $files, ?ComposerMap $autoload = null): self
     {
         $cb = new self();
         $parser = (new ParserFactory())->createForHostVersion();
         $printer = new Standard();
         $asts = [];
-        foreach (array_unique($files) as $file) {
-            // Analyse the code as written, without fast-php's own prologues.
-            $code = \FastPhp\Patch\Patcher::stripAll((string) file_get_contents($file));
-            try {
-                $ast = $parser->parse($code) ?? [];
-            } catch (\PhpParser\Error) {
-                continue;
+        $todo = array_values(array_unique($files));
+        for ($round = 0; $todo && $round < 4; $round++) {
+            foreach ($todo as $file) {
+                // Analyse the code as written, without fast-php's own prologues.
+                $code = \FastPhp\Patch\Patcher::stripAll((string) file_get_contents($file));
+                try {
+                    $ast = $parser->parse($code) ?? [];
+                } catch (\PhpParser\Error) {
+                    continue;
+                }
+                $traverser = new NodeTraverser(new NameResolver());
+                $asts[$file] = $traverser->traverse($ast);
+                $cb->sources[$file] = $code;
             }
-            $traverser = new NodeTraverser(new NameResolver());
-            $asts[$file] = $traverser->traverse($ast);
-            $cb->sources[$file] = $code;
+            // Classes the code refers to that no file defines yet: ask Composer where they live.
+            $todo = [];
+            if ($autoload !== null) {
+                $defined = [];
+                $used = [];
+                foreach ($asts as $ast) {
+                    foreach ((new NodeFinder())->find($ast, static fn ($n) => $n instanceof Stmt\ClassLike || $n instanceof Expr\StaticCall || $n instanceof Expr\ClassConstFetch) as $n) {
+                        if ($n instanceof Stmt\ClassLike) {
+                            if ($n->namespacedName !== null) {
+                                $defined[strtolower($n->namespacedName->toString())] = true;
+                            }
+                        } elseif ($n->class instanceof \PhpParser\Node\Name && !in_array(strtolower($n->class->toString()), ['self', 'static', 'parent'], true)) {
+                            $used[$n->class->toString()] = true;
+                        }
+                    }
+                }
+                foreach (array_keys($used) as $class) {
+                    if (!isset($defined[strtolower($class)]) && ($file = $autoload->find($class)) !== null && !isset($asts[$file])) {
+                        $todo[] = $file;
+                    }
+                }
+                $todo = array_values(array_unique($todo));
+            }
         }
         foreach ($asts as $file => $ast) {
             $cb->collect($file, $ast, $printer);
@@ -62,6 +93,27 @@ final class Codebase
             if ($class->namespacedName === null) {
                 continue; // anonymous class
             }
+            $info = ['props' => [], 'magicGet' => false, 'final' => $class instanceof Stmt\Class_ && $class->isFinal()];
+            $classReadonly = $class instanceof Stmt\Class_ && $class->isReadonly();
+            foreach ($class->getProperties() as $prop) {
+                foreach ($prop->props as $pp) {
+                    $info['props'][$pp->name->toString()] = ['type' => $this->type($prop->type, $printer), 'readonly' => $classReadonly || $prop->isReadonly()];
+                }
+            }
+            foreach ($class->getMethods() as $m) {
+                $name = strtolower($m->name->toString());
+                if ($name === '__get') {
+                    $info['magicGet'] = true;
+                }
+                if ($name === '__construct') {
+                    foreach ($m->params as $p) {
+                        if ($p->flags !== 0 && $p->var instanceof Expr\Variable && is_string($p->var->name)) {
+                            $info['props'][$p->var->name] = ['type' => $this->type($p->type, $printer), 'readonly' => $classReadonly || (bool) ($p->flags & \PhpParser\Modifiers::READONLY)];
+                        }
+                    }
+                }
+            }
+            $this->classes[strtolower($class->namespacedName->toString())] = $info;
             foreach ($class->getMethods() as $m) {
                 if ($m->stmts === null) {
                     continue; // abstract or interface
@@ -69,8 +121,8 @@ final class Codebase
                 $f = new Func($class->namespacedName->toString(), $m->name->toString(), $m->isStatic(), $file, $m->getStartLine(), $this->params($m, $printer), $this->type($m->returnType, $printer), $m);
                 if ($class instanceof Stmt\Trait_) {
                     $f->blockers[] = 'is a trait method';
-                } elseif (!$m->isStatic()) {
-                    $f->blockers[] = 'is an instance method (planned for Phase 2: readonly $this)';
+                } elseif (!$m->isStatic() && str_starts_with($m->name->toString(), '__')) {
+                    $f->blockers[] = 'is a magic method';
                 }
                 $this->add($f, $m);
             }
@@ -79,6 +131,7 @@ final class Codebase
 
     private function add(Func $f, Stmt\Function_|Stmt\ClassMethod $node): void
     {
+        $f->doc = DocTypes::read($node->getDocComment()?->getText());
         if ($node->byRef) {
             $f->blockers[] = 'returns by reference';
         }
@@ -177,6 +230,31 @@ final class Codebase
             array_push($todo, ...array_keys($this->funcs[$k]->calls));
         }
         return $seen;
+    }
+
+    /**
+     * Properties an instance method reads, its own and those of the same-class helpers it
+     * calls, sorted: they become extra arguments of the port.
+     *
+     * @return list<string>
+     */
+    public function props(Func $f): array
+    {
+        $props = $f->props;
+        foreach ($this->reachable($f) as $h) {
+            if (!$h->static && $h->class === $f->class) {
+                $props += $h->props;
+            }
+        }
+        $names = array_keys($props);
+        sort($names);
+        return $names;
+    }
+
+    /** A property's declared type, if the class declares it. */
+    public function propType(?string $class, string $prop): ?string
+    {
+        return $this->classes[strtolower((string) $class)]['props'][$prop]['type'] ?? null;
     }
 
     /** Is a file nothing but declarations (safe to require on its own)? */

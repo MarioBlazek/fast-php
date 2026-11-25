@@ -71,11 +71,41 @@ final class ScanCommand extends Base
         if (!$functions) {
             throw new \RuntimeException('The profiler recorded nothing. Is the extension loading? Try: ' . Process::quote($this->php->command($script, $w['args'], [$runtime])));
         }
-        $this->io->writeln(sprintf('  %s with the profiler (%+.0f%% overhead)', self::ms($wall), ($wall / $best['on'] - 1) * 100));
+        $this->io->writeln(sprintf('  %s with the profiler (%+.0f%%)', self::ms($p->seconds), ($p->seconds / $best['on'] - 1) * 100));
 
         $files = array_values(array_unique(array_filter(array_column(array_filter($functions, static fn ($f) => !$f['internal']), 'file'), 'is_file')));
-        $cb = Codebase::load($files);
+        $cb = Codebase::load($files, \FastPhp\Analysis\ComposerMap::forProject($this->project->root));
         $rows = Ranker::rank($cb, $functions, $wall, $this->project->rel(...));
+
+        // A second run that also times builtins: a candidate whose time is mostly inside
+        // preg_*, explode() and friends is already running C, and porting it gains less.
+        $picks = array_keys(array_filter($rows, static fn ($r) => $r['verdict'] === 'port'));
+        if ($picks) {
+            array_map('unlink', glob("$dir/prof-*.json") ?: []);
+            Process::run($this->php->command($script, $w['args'], [$runtime], true, $w['php']), $this->project->root, ['FASTPHP_PROF_DIR' => $dir, 'FASTPHP_PROF_INTERNAL' => '1']);
+            [$withBuiltins] = $this->readProfiles($dir);
+            $own = [];
+            foreach ($withBuiltins as $fn) {
+                if (!$fn['internal']) {
+                    $own[strtolower(($fn['class'] !== null ? $fn['class'] . '::' : '') . $fn['name'])] = ($own[strtolower(($fn['class'] !== null ? $fn['class'] . '::' : '') . $fn['name'])] ?? 0) + $fn['own'];
+                }
+                if (!$fn['internal'] && $fn['cum'] > 0) {
+                    $cum[strtolower(($fn['class'] !== null ? $fn['class'] . '::' : '') . $fn['name'])] = $fn['cum'];
+                }
+            }
+            foreach ($picks as $i) {
+                $key = strtolower($rows[$i]['name']);
+                $total = $cum[$key] ?? 0;
+                if ($total <= 0) {
+                    continue;
+                }
+                $php = $own[$key] ?? 0;
+                foreach ($rows[$i]['helpers'] as $h) {
+                    $php += $own[strtolower($h)] ?? 0;
+                }
+                $rows[$i]['builtinShare'] = max(0.0, min(1.0, 1 - $php / $total));
+            }
+        }
 
         $this->project->state['scan'] = [
             'php' => $this->php->version(),
@@ -101,6 +131,9 @@ final class ScanCommand extends Base
         }
         $top = $picks[0];
         $this->io->success(sprintf('Port %s first: %s of the run%s.', $top['name'], self::pct($top['share']), $top['helpers'] ? ', including ' . implode(', ', $top['helpers']) : ''));
+        if (($top['builtinShare'] ?? 0) >= 0.5) {
+            $this->io->note(sprintf('%s of its time is inside PHP builtins (%s), which are C already. The port wins on the PHP loops around them; expect a smaller speedup than the share suggests.', self::pct($top['builtinShare']), 'preg_*, explode(), number_format() and the like'));
+        }
         $this->io->writeln("Next: <info>vendor/bin/fast-php port {$top['id']}</info>");
         return self::SUCCESS;
     }

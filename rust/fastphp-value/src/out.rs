@@ -114,6 +114,25 @@ tuple_into_php!(A 0, B 1);
 tuple_into_php!(A 0, B 1, C 2);
 tuple_into_php!(A 0, B 1, C 2, D 3);
 
+impl<V: IntoPhp> IntoPhp for indexmap::IndexMap<PhpKey, V> {
+    /// Keys are written as given; a PhpKey::Str is never numeric when it came from PHP or
+    /// from PhpKey::from_bytes.
+    fn into_php(self, zv: &mut Zval) {
+        let mut ht = ZendHashTable::with_capacity(u32::try_from(self.len()).unwrap_or(u32::MAX));
+        for (k, v) in self {
+            let v = zval(v);
+            let _ = match k {
+                PhpKey::Int(i) => ht.insert_at_index(i, v),
+                PhpKey::Str(s) => {
+                    let key = ZendStr::new(&s.0, false);
+                    ht.insert(ArrayKey::ZendString(&key), v)
+                }
+            };
+        }
+        zv.set_hashtable(ht);
+    }
+}
+
 impl IntoPhp for PhpArray {
     fn into_php(self, zv: &mut Zval) {
         let mut ht = ZendHashTable::with_capacity(u32::try_from(self.len()).unwrap_or(u32::MAX));

@@ -11,3 +11,11 @@ fast-php builds on ideas and code from fast-anything
 - src/Port/Task.php follows the structure of task_md in src/native.rs.
 - rust/spike-ffi and the Upstream class in spike/crossing.php reproduce fast-anything's PHP bridge
   (src/native.rs glue_rs, src/php/bridge.php) so the two bridges can be measured side by side.
+
+fastphp-std (rust/fastphp-std) re-implements PHP builtins in Rust following their implementation
+in php-src (https://github.com/php/php-src): among others _php_math_round and
+_php_math_number_format_ex (ext/standard/math.c), zend_gcvt (Zend/zend_strtod.c),
+_is_numeric_string_ex, zendi_smart_strcmp and zend_compare (Zend/zend_operators.c),
+php_similar_char and php_charmask (ext/standard/string.c), and the match loops of
+ext/pcre/php_pcre.c. php-src is licensed under the PHP License v3.01:
+This product includes PHP software, freely available from <http://www.php.net/software/>.

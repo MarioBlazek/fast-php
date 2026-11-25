@@ -82,8 +82,12 @@ final class Blockers extends NodeVisitorAbstract
             $node instanceof Expr\ShellExec => $this->block('runs shell commands'),
             $node instanceof Expr\Variable => $this->variable($node),
             $node instanceof Expr\New_ => null, // checked in leaveNode with its parent
-            $node instanceof Expr\MethodCall, $node instanceof Expr\NullsafeMethodCall => $this->block('calls methods on objects'),
-            $node instanceof Expr\PropertyFetch, $node instanceof Expr\NullsafePropertyFetch => $this->block('reads object properties'),
+            $node instanceof Expr\MethodCall, $node instanceof Expr\NullsafeMethodCall => $this->methodCall($node),
+            $node instanceof Expr\PropertyFetch, $node instanceof Expr\NullsafePropertyFetch => $this->propertyFetch($node),
+            $node instanceof Expr\Assign, $node instanceof Expr\AssignOp, $node instanceof Expr\AssignRef => $this->write($node->var),
+            $node instanceof Expr\PreInc, $node instanceof Expr\PreDec, $node instanceof Expr\PostInc, $node instanceof Expr\PostDec => $this->write($node->var),
+            $node instanceof Stmt\Unset_ => array_map($this->write(...), $node->vars),
+            $node instanceof Stmt\Foreach_ && $node->byRef => $this->write($node->expr),
             $node instanceof Expr\StaticPropertyFetch => $this->block('uses static properties (state shared between calls)'),
             $node instanceof Expr\FuncCall => $this->funcCall($node),
             $node instanceof Expr\StaticCall => $this->staticCall($node),
@@ -111,9 +115,66 @@ final class Blockers extends NodeVisitorAbstract
         if (!is_string($v->name)) {
             $this->block('uses variable variables ($$name)');
         } elseif ($v->name === 'this') {
-            $this->block('uses $this');
+            // $this->prop and $this->helper() mark their $this as handled; anything else passes the object around.
+            if (!$v->getAttribute('fastphp.this')) {
+                $this->block($this->f->static ? 'uses $this' : 'uses $this as a value (only $this->property reads are portable)');
+            }
         } elseif (in_array($v->name, self::SUPERGLOBALS, true)) {
             $this->block("reads \${$v->name}");
+        }
+    }
+
+    private static function isThis(?Node $n): bool
+    {
+        return $n instanceof Expr\Variable && $n->name === 'this';
+    }
+
+    /** $this->prop: a read the port gets as an argument. Anything else on objects is blocked. */
+    private function propertyFetch(Expr\PropertyFetch|Expr\NullsafePropertyFetch $p): void
+    {
+        if (!self::isThis($p->var) || $this->f->static) {
+            $this->block('reads object properties');
+            return;
+        }
+        $p->var->setAttribute('fastphp.this', true);
+        if (!$p->name instanceof Node\Identifier) {
+            $this->block('reads a property chosen at runtime ($this->$name)');
+            return;
+        }
+        $name = $p->name->toString();
+        $class = $this->cb->classes[strtolower((string) $this->f->class)] ?? null;
+        if ($class !== null && $class['magicGet'] && !isset($class['props'][$name])) {
+            $this->block("reads \$this->$name, which goes through __get()");
+            return;
+        }
+        $this->f->props[$name] = true;
+    }
+
+    /** $this->helper(...) on the same class is a call to port along; other method calls are blocked. */
+    private function methodCall(Expr\MethodCall|Expr\NullsafeMethodCall $m): void
+    {
+        if (!self::isThis($m->var) || $this->f->static || !$m->name instanceof Node\Identifier) {
+            $this->block('calls methods on objects');
+            return;
+        }
+        $m->var->setAttribute('fastphp.this', true);
+        $user = $this->cb->find($this->f->class, $m->name->toString());
+        if ($user === null) {
+            $this->block("calls \$this->{$m->name}(), which isn't in the scanned files");
+            return;
+        }
+        $this->f->calls[$user->keyOf()] = true;
+    }
+
+    /** Writing to (or taking a reference into) $this->prop changes the object: blocked. */
+    private function write(Node $target): void
+    {
+        $n = $target;
+        while ($n instanceof Expr\ArrayDimFetch) {
+            $n = $n->var;
+        }
+        if (($n instanceof Expr\PropertyFetch || $n instanceof Expr\StaticPropertyFetch) && self::isThis($n->var ?? null)) {
+            $this->block('writes to $this->' . ($n->name instanceof Node\Identifier ? $n->name : '…'));
         }
     }
 
@@ -147,6 +208,12 @@ final class Blockers extends NodeVisitorAbstract
         }
         $this->f->builtins[$name] = true;
         $this->stringCallables($call);
+        // sort($this->items) and friends change the property in place.
+        foreach ((new \ReflectionFunction($name))->getParameters() as $i => $param) {
+            if ($param->isPassedByReference() && isset($call->args[$i]) && $call->args[$i] instanceof Node\Arg) {
+                $this->write($call->args[$i]->value);
+            }
+        }
     }
 
     /** array_map('normalize', ...) and usort($a, 'cmp'): a string naming a user function. */

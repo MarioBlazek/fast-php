@@ -216,6 +216,30 @@ impl FromPhp for PhpArray {
     }
 }
 
+impl<V: FromPhp> FromPhp for indexmap::IndexMap<PhpKey, V> {
+    /// Any array whose values all fit V, keys as stored.
+    fn from_php(zv: &Zval) -> Option<Self> {
+        let ht = array(zv)?;
+        let mut out = indexmap::IndexMap::with_capacity(ht.nNumOfElements as usize);
+        let mut ok = true;
+        each(ht, |k, v| match V::from_php(v) {
+            Some(x) => {
+                let key = match k {
+                    RawKey::Int(i) => PhpKey::Int(i),
+                    RawKey::Str(s) => PhpKey::Str(PhpString(s.to_vec())),
+                };
+                out.insert(key, x);
+                true
+            }
+            None => {
+                ok = false;
+                false
+            }
+        });
+        ok.then_some(out)
+    }
+}
+
 /// Tuples for fixed-shape rows like [$i, $j] or [$name, $score]: lists of exactly that length.
 macro_rules! tuple_from_php {
     ($($t:ident),+) => {

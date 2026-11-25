@@ -4,3 +4,5 @@
 .DS_Store
 /.phpunit.cache/
 /composer.lock
+/examples/*/vendor/
+/examples/*/.fast-php/

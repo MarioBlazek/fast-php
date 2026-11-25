@@ -17,14 +17,22 @@ fast-php is a PHP-first take on [fast-anything](https://github.com/EL4CTEO/fast-
 
 ## Status
 
-**Phase 1 is done:** the `fast-php` tool takes a PHP script from profile to an enabled Rust port, and CI runs the whole pipeline on PHP 8.2–8.5 ([docs/phase-1.md](docs/phase-1.md)). Phase 0's spikes are in [docs/phase-0.md](docs/phase-0.md), the plan in [docs/plan.md](docs/plan.md). Web workloads (FPM) are Phase 3 and coding-agent runs are Phase 4.
+**Phase 2 is done** ([docs/phase-2.md](docs/phase-2.md)):
+- **`fastphp-std`:** PHP's builtins in Rust, fuzzed against PHP 8.2–8.5 in CI.
+- **More types:** PHPDoc types, and instance methods that only read `$this`.
+- **Parity:** exceptions and warnings must match the original.
+- **Recording:** a deriver that knows PHP's edge cases, and helpers found through Composer.
 
-On the [fuzzy-dedupe example](examples/fuzzy-dedupe-cli), JIT on:
+The `fast-php` tool takes a PHP script from profile to an enabled Rust port ([docs/phase-1.md](docs/phase-1.md)). Phase 0's spikes are in [docs/phase-0.md](docs/phase-0.md), the plan in [docs/plan.md](docs/plan.md). Web workloads (FPM) are Phase 3, coding-agent runs Phase 4.
 
-| | PHP | with the Rust port |
+The examples, JIT on:
+
+| example | per call | whole script |
 |---|---:|---:|
-| `Fuzzy::findDuplicates`, per call | 423 ms | **0.87 ms** (486×) |
-| the whole script | 598 ms | **51 ms** (11.7×), output identical; most of it is PHP starting up |
+| [fuzzy-dedupe-cli](examples/fuzzy-dedupe-cli): `Fuzzy::findDuplicates` | 440 ms → 1.7 ms (261×) | 604 ms → 52 ms (11.5×) |
+| [invoice-report-cli](examples/invoice-report-cli): `Report::summary`, an instance method that is half builtins | 12.3 ms → 6.6 ms (1.9×) | 243 ms → 198 ms (1.2×) |
+
+All outputs are identical. Code that is mostly PHP loops gains the most; code that is mostly calls to builtins (already C) gains little, and `scan` says so.
 
 ## Usage
 
@@ -61,8 +69,9 @@ Highlights from Phase 0, PHP 8.5, time per call:
 
 ```sh
 composer install
-vendor/bin/phpunit       # patcher, comparator, types, analysis
-sh tests/e2e.sh          # the whole pipeline on the example, including a wrong port that must fail verify
+vendor/bin/phpunit       # patcher, comparator, types, PHPDoc, analysis
+sh tests/std/run.sh      # fastphp-std against this PHP: differential fuzzing
+sh tests/e2e.sh          # the whole pipeline on both examples, each with a wrong port that must fail verify
 sh spike/run.sh          # Phase 0: exact round-trips, observer profiler, crossing costs
 ```
 
@@ -70,7 +79,7 @@ sh spike/run.sh          # Phase 0: exact round-trips, observer profiler, crossi
 
 ```
 bin/fast-php           the CLI
-src/Analysis           php-parser: functions, call graph, blockers, ranking
+src/Analysis           php-parser: functions, call graph, blockers, ranking, PHPDoc, Composer lookup
 src/Patch              marked one-line prologues, removed byte for byte
 src/Port               type inference, crate scaffolding, TASK.md
 src/Verify             StrictComparator (=== with NAN and -0.0 handled)
@@ -78,12 +87,14 @@ src/Cli                doctor, scan, port, verify, enable, disable, bench, statu
 res/rec.php            the recorder (auto_prepend_file during `port`)
 res/replay.php         the PHP side of `verify`
 rust/fastphp-value     exact PHP values in Rust + fast zval reads/writes for generated glue
+rust/fastphp-std       PHP's builtins in Rust, byte for byte (what ports call)
+rust/std-check         fastphp-std exposed to PHP for tests/std/fuzz.php
 rust/fastphp-runtime   profiler extension (Zend observer API)
 rust/spike-ext         Phase 0 spike extension
 rust/spike-ffi         fast-anything's FFI + JSON bridge, for comparison
 spike/                 Phase 0 round-trip check, crossing-cost benchmark, runner
 examples/              apps used as fixtures (with reference ports)
-tests/                 PHPUnit tests, e2e.sh
+tests/                 PHPUnit tests, e2e.sh, std/ (differential fuzzing)
 docs/                  plan and phase results
 scripts/logo.py        draws the logo, wordmarks and social card (docs/assets)
 ```

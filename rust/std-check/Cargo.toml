@@ -1,0 +1,15 @@
+[package]
+name = "std-check"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "fastphp-std exposed to PHP, so tests/std/fuzz.php can compare it with PHP's own builtins."
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+ext-php-rs.workspace = true
+fastphp-value = { path = "../fastphp-value" }
+fastphp-std = { path = "../fastphp-std" }

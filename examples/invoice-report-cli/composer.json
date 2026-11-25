@@ -1,0 +1,9 @@
+{
+    "name": "fast-php/example-invoice-report",
+    "description": "fast-php example: an instance method, PHPDoc types, PHP's number formatting and a helper only Composer knows about.",
+    "type": "project",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {"Invoice\\": "src/"}
+    }
+}

@@ -18,7 +18,7 @@ final class Cases
         $out = [];
         foreach (file($file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [] as $line) {
             $c = json_decode($line, true, flags: JSON_THROW_ON_ERROR);
-            $case = ['derived' => (bool) $c['derived'], 'args' => unserialize(base64_decode($c['args']))];
+            $case = ['derived' => (bool) $c['derived'], 'args' => unserialize(base64_decode($c['args'])), 'warn' => $c['warn'] ?? []];
             if ($c['exc'] !== null) {
                 $case['exc'] = $c['exc'];
             } else {
