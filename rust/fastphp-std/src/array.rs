@@ -8,7 +8,15 @@ use std::collections::HashSet;
 /// range($start, $end, $step) for ints. Negative steps are declined (their rules changed in 8.3).
 pub fn range(start: i64, end: i64, step: i64) -> Result<Vec<i64>, PhpError> {
     if step == 0 {
-        return Err(PhpError::new("ValueError", "range(): Argument #3 ($step) cannot be 0"));
+        // PHP 8.2 sends a zero step down the same error path as a step that is too large.
+        return Err(PhpError::new(
+            "ValueError",
+            if php_version() >= 80300 {
+                "range(): Argument #3 ($step) cannot be 0"
+            } else {
+                "range(): Argument #3 ($step) must not exceed the specified range"
+            },
+        ));
     }
     if step < 0 {
         return fallback();
