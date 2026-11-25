@@ -43,13 +43,14 @@ final class EnableCommand extends Base
         $this->project->save();
         $so = self::build($this, $this->project, $this->cargo);
         $this->io->success("$id is enabled in {$port['file']}.");
+        $w = $this->project->workload();
         $this->io->writeln([
             'The prologue only calls the port when the extension is loaded, so the app runs unchanged without it:',
             '',
-            "  php -d extension=$so " . $this->project->workload()['script'],
+            '  php -d extension=' . $so . ' ' . ($w instanceof \FastPhp\Workload\CliWorkload ? $w->script : '-S localhost:8000 -t ' . $w->toState()['docroot']),
             '',
-            'For PHP-FPM, add that extension= line to a conf.d ini and restart FPM. FAST_PHP_DISABLE=1 turns the ports off.',
-            "Next: <info>vendor/bin/fast-php bench</info>",
+            'For PHP-FPM, `fast-php install` writes the ini line and checks FPM can load the extension. FAST_PHP_DISABLE=1 turns the ports off.',
+            'Next: <info>vendor/bin/fast-php bench</info>',
         ]);
         return self::SUCCESS;
     }

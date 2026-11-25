@@ -11,4 +11,7 @@ foreach ([$autoload, __DIR__ . '/../vendor/autoload.php', __DIR__ . '/../../../a
     }
 }
 
+// Parsing a framework's few thousand files takes more than php.ini's usual 128M.
+ini_set('memory_limit', '-1');
+
 exit((new FastPhp\Cli\Application())->run());

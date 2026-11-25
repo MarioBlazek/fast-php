@@ -75,4 +75,14 @@ final class TypesTest extends TestCase
         self::assertFalse(Types::declaredNullable('array'));
         self::assertFalse(Types::declaredNullable('int|string'));
     }
+
+    public function testPhpDocTuplesAreInferredPerPosition(): void
+    {
+        $doc = ['list', ['tuple', ['int', ['list', 'int']]]];
+        $offers = [[[1990, [0, 2]], [500, [1]]], [[700, []]]];
+        self::assertSame('Vec<(i64, Vec<i64>)>', Types::rust(Types::param('array', $offers, true, $doc)));
+        self::assertSame('(i64, Vec<i64>)', Types::rust(Types::refine(['tuple', ['int', ['list', 'int']]], [[5, [1, 2]], [0, []]])));
+        // Recordings that aren't tuples of that length win over the PHPDoc.
+        self::assertSame('Vec<i64>', Types::rust(Types::refine(['tuple', ['int', 'int']], [[1, 2, 3]])));
+    }
 }

@@ -129,9 +129,15 @@ Project working dir: `.fast-php/` holds `state.json`, `ports/<id>/` (one crate e
 - **[phase 2]** A port of builtin-heavy code gains little (the builtins are C already); scan measures and reports the
   builtin share of each candidate. Zero-copy string arguments are the next speed lever.
 
-**Phase 3: web workloads**
+**Phase 3: web workloads. Done, see [phase-3.md](phase-3.md).**
 - `php -S` launcher with a router (index.php), request file format (method/url/headers/body; HAR import), sharded recording, web bench (with `--url` for real FPM), `install` command, FPM restart notes.
 - A small framework-free web example (hot slugify/pricing loop), plus one Laravel smoke example.
+- **[phase 3]** The example's hot path is deal pricing (a bitmask DP), not slugify: slugify is builtins, and Phase 2
+  showed those gain little.
+- **[phase 3]** Web timings warm up twice and the profile subtracts the warm-up; a cold profile blamed Laravel's
+  autoloader for half the time.
+- **[phase 3]** FPM is benchmarked (`bench --url`, before/after) and installed into, but profiling and recording still
+  run under `php -S`.
 
 **Phase 4: agent loop and polish**
 - `go --agent`, retry loop with verify feedback, report/SVG, Claude Code plugin + slash command (mirroring upstream `commands/fast.md` / `skills/`).

@@ -79,4 +79,18 @@ abstract class Base extends Command
     {
         return sprintf('%.1f%%', $x * 100);
     }
+
+    /** The $p quantile (0..1) of $values, nearest rank. @param list<float> $values */
+    protected static function quantile(array $values, float $p): float
+    {
+        sort($values);
+        return $values[max(0, min(count($values) - 1, (int) ceil($p * count($values)) - 1))];
+    }
+
+    /** @param list<float> $latencies */
+    protected static function latency(array $latencies): string
+    {
+        $q = static fn (float $p) => self::quantile($latencies, $p);
+        return sprintf('per request: p50 %s, p95 %s', self::ms($q(0.5)), self::ms($q(0.95)));
+    }
 }

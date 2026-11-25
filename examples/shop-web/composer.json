@@ -1,0 +1,14 @@
+{
+    "name": "fast-php-examples/shop-web",
+    "description": "A small web shop whose checkout prices the cheapest combination of deals: fast-php's web example",
+    "type": "project",
+    "license": "MIT",
+    "require": {
+        "php": ">=8.2"
+    },
+    "autoload": {
+        "psr-4": {
+            "Shop\\": "src/"
+        }
+    }
+}

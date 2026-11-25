@@ -141,7 +141,7 @@ final class Scaffolder
         $rets = array_column($ok, 'ret');
         $retShape = $f->returnType !== null && !Types::declaredNullable($f->returnType)
             ? Types::param($f->returnType, $rets, true, $f->doc['return'])
-            : Types::merge($f->doc['return'], Types::infer($rets));
+            : Types::refine($f->doc['return'], $rets);
         if ($retShape === 'never') {
             $retShape = 'mixed';
         }

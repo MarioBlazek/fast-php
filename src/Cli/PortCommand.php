@@ -7,7 +7,6 @@ use FastPhp\Analysis\Codebase;
 use FastPhp\Analysis\Func;
 use FastPhp\Analysis\Ranker;
 use FastPhp\Patch\Patcher;
-use FastPhp\Php\Process;
 use FastPhp\Port\Cases;
 use FastPhp\Port\Scaffolder;
 use FastPhp\Project;
@@ -115,15 +114,12 @@ final class PortCommand extends Base
         $this->project->save();
         $shards = $this->project->path('tmp', 'rec');
         @mkdir($shards, 0777, true);
-        array_map('unlink', glob("$shards/rec-*.jsonl") ?: []);
+        array_map('unlink', glob("$shards/{rec-*.jsonl,derived-*}", GLOB_BRACE) ?: []);
         try {
             $this->patch($file, static fn (string $code) => Patcher::insert($code, $f->class, $f->name, $marker, $prologue));
-            $w = $this->project->workload();
-            $cmd = $this->php->command($this->project->abs($w['script']), $w['args'], [], false, [...$w['php'], '-d', 'auto_prepend_file=' . Project::toolRoot() . '/res/rec.php', '-d', 'memory_limit=-1']);
-            $p = Process::run($cmd, $this->project->root, ['FASTPHP_REC_DIR' => $shards, 'FASTPHP_REC_MAX' => (string) $max]);
-            if ($p->exit !== 0) {
-                throw new \RuntimeException("The recording run failed (exit {$p->exit}):\n" . trim($p->stderr ?: $p->stdout));
-            }
+            $this->project->workload()->once($this->php, $this->project, [], false,
+                ['-d', 'auto_prepend_file=' . Project::toolRoot() . '/res/rec.php', '-d', 'memory_limit=-1'],
+                ['FASTPHP_REC_DIR' => $shards, 'FASTPHP_REC_MAX' => (string) $max]);
         } finally {
             file_put_contents($f->file, Patcher::strip((string) file_get_contents($f->file), $marker));
             unset($this->project->state['recording'][$file]);

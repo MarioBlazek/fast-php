@@ -3,7 +3,8 @@
 #
 # For each one: scan → a wrong port must fail verify → the reference port verifies → enable →
 # the same output with and without the extension → bench → disable restores the source byte
-# for byte.
+# for byte. A web example is scanned, recorded and benchmarked through php -S with its
+# requests.http, and bench fails unless every response is identical with and without the ports.
 set -eu
 root=$(cd "$(dirname "$0")/.." && pwd)
 # Share one cargo cache between runs (CI caches rust/target).
@@ -11,9 +12,9 @@ export FAST_PHP_TARGET_DIR="${FAST_PHP_TARGET_DIR:-$root/rust/target/e2e}"
 # The tool itself runs with php.ini (php-parser needs ext-tokenizer); its timed runs use -n.
 fp() { php "$root/bin/fast-php" "$@"; }
 
-# example  port id  file the port patches  wrong port (what it gets wrong)
+# example  port id  file the port patches  wrong port  [web: scan options]
 run() {
-    example=$1 id=$2 patched=$3 wrong=$4
+    example=$1 id=$2 patched=$3 wrong=$4 web=${5:-}
     echo
     echo "######## $example"
     work=$(mktemp -d)
@@ -24,7 +25,12 @@ run() {
         composer dump-autoload --quiet
     fi
 
-    fp scan -- php app.php
+    if [ -n "$web" ]; then
+        # shellcheck disable=SC2086
+        fp scan $web
+    else
+        fp scan -- php app.php
+    fi
 
     echo "== $wrong must fail verify"
     fp port "$id" --reference "$root/tests/fixtures/$wrong"
@@ -39,15 +45,20 @@ run() {
     fp enable "$id"
     grep -q "fast-php:$id" "$patched"
 
-    so=$(ls "$work"/.fast-php/build/*fastphp_app*)
-    php -n app.php > plain.txt
-    php -n -d extension="$so" app.php > native.txt
-    FAST_PHP_DISABLE=1 php -n -d extension="$so" app.php > disabled.txt
-    cmp plain.txt native.txt
-    cmp plain.txt disabled.txt
-    echo "ok   same output without the extension, with it, and with FAST_PHP_DISABLE=1"
-
-    fp bench --runs 3
+    if [ -n "$web" ]; then
+        fp bench --runs 3
+        echo "ok   every response identical with and without the ports"
+        fp install --cli --no-fpm
+    else
+        so=$(ls "$work"/.fast-php/build/*fastphp_app*)
+        php -n app.php > plain.txt
+        php -n -d extension="$so" app.php > native.txt
+        FAST_PHP_DISABLE=1 php -n -d extension="$so" app.php > disabled.txt
+        cmp plain.txt native.txt
+        cmp plain.txt disabled.txt
+        echo "ok   same output without the extension, with it, and with FAST_PHP_DISABLE=1"
+        fp bench --runs 3
+    fi
     fp disable "$id"
     cmp "$patched" "$root/examples/$example/$patched"
     echo "ok   disable restored $patched byte for byte"
@@ -61,4 +72,7 @@ if [ -z "$only" ] || [ "$only" = fuzzy-dedupe-cli ]; then
 fi
 if [ -z "$only" ] || [ "$only" = invoice-report-cli ]; then
     run invoice-report-cli Invoice_Report_summary src/Report.php invoice-wrong-port.rs
+fi
+if [ -z "$only" ] || [ "$only" = shop-web ]; then
+    run shop-web Shop_Bundles_cheapest src/Bundles.php shop-wrong-port.rs "--web requests.http --workers 2 -- php -S localhost:8000 -t public"
 fi

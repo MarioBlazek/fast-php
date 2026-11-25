@@ -61,5 +61,8 @@ jobs:
         run: sh tests/std/run.sh 2000
       - name: Spikes (round-trip, observer profiler, crossing cost)
         run: sh spike/run.sh
-      - name: End to end on both examples (scan, wrong port rejected, port, verify, enable, bench, disable)
+      - name: End to end on every example (scan, wrong port rejected, port, verify, enable, bench, disable)
         run: sh tests/e2e.sh
+      - name: Laravel smoke test (web pipeline on a fresh Laravel app)
+        if: matrix.php == '8.4' && runner.os == 'Linux'
+        run: sh tests/laravel/smoke.sh

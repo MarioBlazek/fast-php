@@ -163,7 +163,53 @@ final class Types
                 default => 'mixed',
             };
         }
-        return self::merge($doc, self::infer($samples));
+        return self::refine($doc, $samples);
+    }
+
+    /**
+     * merge() with the recorded values themselves rather than their joined shape, which a
+     * PHPDoc tuple needs: array{int, list<int>} records as a list of int and list<int>, whose
+     * joined element shape is just mixed. Each tuple position is inferred on its own.
+     *
+     * @param list<mixed> $values
+     */
+    public static function refine(string|array|null $doc, array $values): string|array
+    {
+        if (!self::hasTuple($doc)) {
+            return self::merge($doc, self::infer($values));
+        }
+        $rec = self::infer($values);
+        if ($rec === 'never') {
+            return self::docOnly($doc);
+        }
+        if ($doc[0] === 'tuple') {
+            $n = count($doc[1]);
+            foreach ($values as $v) {
+                if (!is_array($v) || !array_is_list($v) || count($v) !== $n) {
+                    return $rec; // the recordings contradict the PHPDoc
+                }
+            }
+            return ['tuple', array_map(static fn (int $i) => self::refine($doc[1][$i], array_column($values, $i)), range(0, $n - 1))];
+        }
+        if ($doc[0] === '?') {
+            return ['?', self::refine($doc[1], array_values(array_filter($values, static fn ($v) => $v !== null)))];
+        }
+        $kind = self::merge([$doc[0], 'mixed'], $rec);
+        if (!is_array($kind) || !in_array($kind[0], ['list', 'map'], true)) {
+            return $kind;
+        }
+        $inner = [];
+        foreach ($values as $v) {
+            foreach ((array) $v as $x) {
+                $inner[] = $x;
+            }
+        }
+        return [$kind[0], self::refine($doc[1], $inner)];
+    }
+
+    private static function hasTuple(string|array|null $doc): bool
+    {
+        return is_array($doc) && ($doc[0] === 'tuple' || self::hasTuple($doc[1]));
     }
 
     public static function rust(string|array $shape): string

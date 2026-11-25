@@ -16,8 +16,7 @@ final class StatusCommand extends Base
             $this->io->writeln('Nothing yet. Start with <info>vendor/bin/fast-php scan -- php your-script.php</info>');
             return self::SUCCESS;
         }
-        $w = $s['workload'];
-        $this->io->writeln(sprintf('Workload: php %s %s', $w['script'], implode(' ', $w['args'])));
+        $this->io->writeln('Workload: ' . $this->project->workload()->describe());
         $this->io->writeln(sprintf('Last scan: %s, JIT off %s, JIT on %s', $s['scan']['php'], self::ms($s['scan']['jitOff']), self::ms($s['scan']['jitOn'])));
         $rows = [];
         foreach ($s['ports'] ?? [] as $id => $p) {
@@ -35,7 +34,9 @@ final class StatusCommand extends Base
         }
         if (isset($s['bench'])) {
             $b = $s['bench'];
-            $this->io->writeln(sprintf('Last bench: %s → %s (%.1f×)%s', self::ms($b['php']), self::ms($b['native']), $b['php'] / $b['native'], $b['identical'] ? ', identical output' : ', OUTPUT DIFFERED'));
+            $this->io->writeln(sprintf('Last bench: %s → %s (%.1f×)%s%s', self::ms($b['php']), self::ms($b['native']), $b['php'] / $b['native'],
+                isset($b['phpLatency']) ? sprintf(', p95 %s → %s', self::ms($b['phpLatency']['p95']), self::ms($b['nativeLatency']['p95'])) : '',
+                $b['identical'] ? ', identical output' : ', OUTPUT DIFFERED'));
         }
         return self::SUCCESS;
     }

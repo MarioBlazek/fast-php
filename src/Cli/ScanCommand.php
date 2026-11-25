@@ -5,7 +5,8 @@ namespace FastPhp\Cli;
 
 use FastPhp\Analysis\Codebase;
 use FastPhp\Analysis\Ranker;
-use FastPhp\Php\Process;
+use FastPhp\Workload\CliWorkload;
+use FastPhp\Workload\WebWorkload;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
@@ -16,43 +17,50 @@ final class ScanCommand extends Base
 {
     protected function configure(): void
     {
-        $this->addArgument('workload', InputArgument::IS_ARRAY | InputArgument::REQUIRED, 'The command to profile, after --: php app.php [args]')
-            ->addOption('runs', null, InputOption::VALUE_REQUIRED, 'Timed runs per JIT setting (best one counts)', '1')
+        $this->addArgument('workload', InputArgument::IS_ARRAY, 'The command to profile, after --: php app.php [args], or for --web: php -S localhost:8000 -t public [router.php]')
+            ->addOption('web', null, InputOption::VALUE_REQUIRED, 'Profile web requests from this file (.http, a list of URLs, or .har) against php -S')
+            ->addOption('workers', null, InputOption::VALUE_REQUIRED, 'php -S workers, and requests in flight at once (--web)', '1')
+            ->addOption('repeat', null, InputOption::VALUE_REQUIRED, 'Replay the request file this many times per pass (--web)', '1')
+            ->addOption('runs', null, InputOption::VALUE_REQUIRED, 'Timed runs per JIT setting, the best one counts (default: 1, or 3 passes for --web)')
             ->setHelp(<<<'TXT'
-                Runs the script three ways with no php.ini (-n), so Xdebug and friends can't skew it:
+                Runs the workload three ways with no php.ini (-n), so Xdebug and friends can't skew it:
                 JIT off, JIT on, and JIT on under fast-php's observer profiler. Then it reads the
                 source of every function that ran, finds what blocks a port, and ranks the rest by
                 their share of the run.
 
                   vendor/bin/fast-php scan -- php bin/import.php data.csv
+
+                A web app: replay requests against PHP's built-in server, which runs the app the
+                way FPM does (one request at a time per worker, opcache shared).
+
+                  vendor/bin/fast-php scan --web requests.http -- php -S localhost:8000 -t public
                 TXT);
     }
 
     protected function handle(InputInterface $in): int
     {
-        $w = $this->workload($in->getArgument('workload'));
-        $this->project->state['workload'] = $w;
-        $runs = max(1, (int) $in->getOption('runs'));
-        $script = $this->project->abs($w['script']);
+        $tokens = $in->getArgument('workload');
+        $web = $in->getOption('web');
+        $w = $web !== null
+            ? WebWorkload::parse($tokens, $web, $this->project, (int) $in->getOption('workers'), (int) $in->getOption('repeat'))
+            : CliWorkload::parse($tokens, $this->project);
+        $this->project->state['workload'] = $w->toState();
+        // A pass over a request file is short and noisy; a script run usually isn't.
+        $runs = max(1, (int) ($in->getOption('runs') ?? ($w->isWeb() ? 3 : 1)));
+        $this->io->writeln('Workload: ' . $w->describe());
 
         $this->io->section('Building the profiler extension');
         $runtime = $this->cargo->runtime();
 
-        $this->io->section('Baseline (' . $this->php->version() . ', no php.ini)');
+        $this->io->section('Baseline (' . $this->php->version() . ', no php.ini' . ($w->isWeb() ? ', after two warm-up passes' : '') . ')');
         if ($skew = $this->php->skewing()) {
             $this->io->note('Your php.ini loads ' . implode(', ', $skew) . '. fast-php leaves it out of every run; it would distort the timings.');
         }
         $best = [];
         foreach (['off' => false, 'on' => true] as $label => $jit) {
-            $best[$label] = INF;
-            for ($i = 0; $i < $runs; $i++) {
-                $p = Process::run($this->php->command($script, $w['args'], [], $jit, $w['php']), $this->project->root);
-                if ($p->exit !== 0) {
-                    throw new \RuntimeException("The workload failed (exit {$p->exit}):\n" . trim($p->stderr ?: $p->stdout));
-                }
-                $best[$label] = min($best[$label], $p->seconds);
-            }
-            $this->io->writeln(sprintf('  JIT %-3s  %s', $label, self::ms($best[$label])));
+            $r = $w->best($this->php, $this->project, [], $jit, $runs);
+            $best[$label] = $r->seconds;
+            $this->io->writeln(sprintf('  JIT %-3s  %s', $label, self::ms($r->seconds)) . ($r->latencies ? '  ' . self::latency($r->latencies) : ''));
         }
         $jitGain = $best['off'] / $best['on'];
         if ($jitGain >= 1.3) {
@@ -63,55 +71,75 @@ final class ScanCommand extends Base
         $dir = $this->project->path('tmp', 'prof');
         @mkdir($dir, 0777, true);
         array_map('unlink', glob("$dir/prof-*.json") ?: []);
-        $p = Process::run($this->php->command($script, $w['args'], [$runtime], true, $w['php']), $this->project->root, ['FASTPHP_PROF_DIR' => $dir]);
-        if ($p->exit !== 0) {
-            throw new \RuntimeException("The profiled run failed (exit {$p->exit}):\n" . trim($p->stderr ?: $p->stdout));
-        }
-        [$functions, $wall] = $this->readProfiles($dir);
+        // A web profile leaves out the warm-up passes: opcache compiling every file the first
+        // time would show up as bootstrap cost.
+        $warm = [];
+        $p = $w->once($this->php, $this->project, [$runtime], true, [], ['FASTPHP_PROF_DIR' => $dir], function () use ($dir, &$warm) {
+            $warm = $this->snapshot($dir);
+        });
+        [$functions, $wall, $requests] = $this->readProfiles($dir, $warm);
         if (!$functions) {
-            throw new \RuntimeException('The profiler recorded nothing. Is the extension loading? Try: ' . Process::quote($this->php->command($script, $w['args'], [$runtime])));
+            throw new \RuntimeException('The profiler recorded nothing. Is the extension loading? Check that ' . $runtime . ' loads with: php -n -d extension=' . $runtime . ' -m');
         }
-        $this->io->writeln(sprintf('  %s with the profiler (%+.0f%%)', self::ms($p->seconds), ($p->seconds / $best['on'] - 1) * 100));
+        $this->io->writeln($w->isWeb()
+            ? sprintf('  %d requests served by %d PHP process%s, %s inside PHP', $requests, $this->workers($dir), $this->workers($dir) === 1 ? '' : 'es', self::ms($wall))
+            : sprintf('  %s with the profiler (%+.0f%%)', self::ms($p->seconds), ($p->seconds / $best['on'] - 1) * 100));
 
         $files = array_values(array_unique(array_filter(array_column(array_filter($functions, static fn ($f) => !$f['internal']), 'file'), 'is_file')));
         $cb = Codebase::load($files, \FastPhp\Analysis\ComposerMap::forProject($this->project->root));
         $rows = Ranker::rank($cb, $functions, $wall, $this->project->rel(...));
 
-        // A second run that also times builtins: a candidate whose time is mostly inside
-        // preg_*, explode() and friends is already running C, and porting it gains less.
-        $picks = array_keys(array_filter($rows, static fn ($r) => $r['verdict'] === 'port'));
-        if ($picks) {
-            array_map('unlink', glob("$dir/prof-*.json") ?: []);
-            Process::run($this->php->command($script, $w['args'], [$runtime], true, $w['php']), $this->project->root, ['FASTPHP_PROF_DIR' => $dir, 'FASTPHP_PROF_INTERNAL' => '1']);
-            [$withBuiltins] = $this->readProfiles($dir);
-            $own = [];
-            foreach ($withBuiltins as $fn) {
-                if (!$fn['internal']) {
-                    $own[strtolower(($fn['class'] !== null ? $fn['class'] . '::' : '') . $fn['name'])] = ($own[strtolower(($fn['class'] !== null ? $fn['class'] . '::' : '') . $fn['name'])] ?? 0) + $fn['own'];
+        // A second run that also times builtins. A candidate whose time is mostly inside preg_*,
+        // explode() and friends is already running C, and porting it gains less. Time spent
+        // waiting on databases, files and the network can't be ported at all.
+        array_map('unlink', glob("$dir/prof-*.json") ?: []);
+        $warm = [];
+        $w->once($this->php, $this->project, [$runtime], true, [], ['FASTPHP_PROF_DIR' => $dir, 'FASTPHP_PROF_INTERNAL' => '1'], function () use ($dir, &$warm) {
+            $warm = $this->snapshot($dir);
+        });
+        [$withBuiltins, $wall2] = $this->readProfiles($dir, $warm);
+        $own = [];
+        $cum = [];
+        $io = 0.0;
+        $autoload = 0.0;
+        foreach ($withBuiltins as $fn) {
+            $key = strtolower(($fn['class'] !== null ? $fn['class'] . '::' : '') . $fn['name']);
+            if ($fn['internal']) {
+                if (self::waits($fn['class'], $fn['name'])) {
+                    $io += $fn['cum'];
                 }
-                if (!$fn['internal'] && $fn['cum'] > 0) {
-                    $cum[strtolower(($fn['class'] !== null ? $fn['class'] . '::' : '') . $fn['name'])] = $fn['cum'];
-                }
+                continue;
             }
-            foreach ($picks as $i) {
-                $key = strtolower($rows[$i]['name']);
-                $total = $cum[$key] ?? 0;
-                if ($total <= 0) {
-                    continue;
-                }
-                $php = $own[$key] ?? 0;
-                foreach ($rows[$i]['helpers'] as $h) {
-                    $php += $own[strtolower($h)] ?? 0;
-                }
-                $rows[$i]['builtinShare'] = max(0.0, min(1.0, 1 - $php / $total));
+            $own[$key] = ($own[$key] ?? 0) + $fn['own'];
+            if ($fn['cum'] > 0) {
+                $cum[$key] = $fn['cum'];
+            }
+            if ($key === 'composer\\autoload\\classloader::loadclass') {
+                $autoload += $fn['cum'];
             }
         }
+        foreach (array_keys(array_filter($rows, static fn ($r) => $r['verdict'] === 'port')) as $i) {
+            $key = strtolower($rows[$i]['name']);
+            $total = $cum[$key] ?? 0;
+            if ($total <= 0) {
+                continue;
+            }
+            $php = $own[$key] ?? 0;
+            foreach ($rows[$i]['helpers'] as $h) {
+                $php += $own[strtolower($h)] ?? 0;
+            }
+            $rows[$i]['builtinShare'] = max(0.0, min(1.0, 1 - $php / $total));
+        }
+        $ioShare = $wall2 > 0 ? min(1.0, $io / $wall2) : 0.0;
+        $autoloadShare = $wall2 > 0 ? min(1.0, $autoload / $wall2) : 0.0;
 
         $this->project->state['scan'] = [
             'php' => $this->php->version(),
             'jitOff' => $best['off'],
             'jitOn' => $best['on'],
             'profiled' => $wall,
+            'io' => $ioShare,
+            'autoload' => $autoloadShare,
             'functions' => $rows,
         ];
         $this->project->save();
@@ -124,6 +152,12 @@ final class ScanCommand extends Base
         }
         $this->io->table(['function', 'share', 'own time', 'calls', 'verdict'], $table);
 
+        if ($ioShare >= 0.2) {
+            $this->io->note(sprintf('%s of the time is spent waiting on the database, files or the network (PDO, mysqli, curl, streams). No port makes that faster: look at queries and caching first.', self::pct($ioShare)));
+        }
+        if ($autoloadShare >= 0.1) {
+            $this->io->note(sprintf('%s of the time is Composer autoloading classes. That is bootstrap cost, not a port: `composer dump-autoload --classmap-authoritative` and opcache.preload cut it.', self::pct($autoloadShare)));
+        }
         $picks = array_values(array_filter($rows, static fn ($r) => $r['verdict'] === 'port'));
         if (!$picks) {
             $this->io->warning('Nothing qualifies: every hot function is blocked or under ' . self::pct(Ranker::WORTH_IT) . ' of the run.');
@@ -139,45 +173,33 @@ final class ScanCommand extends Base
     }
 
     /**
-     * @param list<string> $tokens
-     * @return array{script: string, args: list<string>, php: list<string>}
+     * Merges the profiles of every PHP process, minus what $before (a snapshot of the same
+     * processes, see snapshot()) had already counted: a web scan leaves the warm-up passes out.
+     *
+     * @param array<string, array<string, mixed>> $before
+     * @return array{0: list<array<string, mixed>>, 1: float, 2: int}
      */
-    private function workload(array $tokens): array
-    {
-        if ($tokens && preg_match('/^php[\d.]*$/', basename($tokens[0]))) {
-            array_shift($tokens);
-        }
-        $php = [];
-        while ($tokens && str_starts_with($tokens[0], '-')) {
-            $opt = array_shift($tokens);
-            if ($opt === '-n') {
-                continue;
-            }
-            $php[] = $opt;
-            if (in_array($opt, ['-d', '-c'], true) && $tokens) {
-                $php[] = array_shift($tokens);
-            }
-        }
-        $script = array_shift($tokens);
-        if ($script === null || !is_file($this->project->abs($script))) {
-            throw new \RuntimeException('Give the script to run after --, for example: fast-php scan -- php app.php');
-        }
-        return ['script' => $this->project->rel(realpath($this->project->abs($script))), 'args' => array_values($tokens), 'php' => $php];
-    }
-
-    /** Merges the profiles of every PHP process. @return array{0: list<array<string, mixed>>, 1: float} */
-    private function readProfiles(string $dir): array
+    private function readProfiles(string $dir, array $before = []): array
     {
         $by = [];
         $wall = 0.0;
-        foreach (glob("$dir/prof-*.json") ?: [] as $file) {
-            $p = json_decode((string) file_get_contents($file), true);
-            if (!is_array($p)) {
-                continue;
+        $requests = 0;
+        foreach ($this->snapshot($dir) as $file => $p) {
+            $b = $before[$file] ?? ['wall' => 0.0, 'requests' => 0, 'functions' => []];
+            $wall += $p['wall'] - $b['wall'];
+            $requests += ($p['requests'] ?? 1) - ($b['requests'] ?? 0);
+            $old = [];
+            foreach ($b['functions'] as $f) {
+                $old[implode("\0", [$f['class'], $f['name'], $f['file'], $f['line']])] = $f;
             }
-            $wall += $p['wall'];
             foreach ($p['functions'] as $f) {
                 $k = implode("\0", [$f['class'], $f['name'], $f['file'], $f['line']]);
+                foreach (['calls', 'own', 'cum'] as $n) {
+                    $f[$n] -= $old[$k][$n] ?? 0;
+                }
+                if ($f['calls'] <= 0) {
+                    continue;
+                }
                 if (isset($by[$k])) {
                     foreach (['calls', 'own', 'cum'] as $n) {
                         $by[$k][$n] += $f[$n];
@@ -187,6 +209,40 @@ final class ScanCommand extends Base
                 }
             }
         }
-        return [array_values($by), $wall];
+        return [array_values($by), $wall, $requests];
+    }
+
+    /** Every process's profile as it stands. @return array<string, array<string, mixed>> */
+    private function snapshot(string $dir): array
+    {
+        $out = [];
+        foreach (glob("$dir/prof-*.json") ?: [] as $file) {
+            $p = json_decode((string) file_get_contents($file), true);
+            if (is_array($p)) {
+                $out[basename($file)] = $p;
+            }
+        }
+        return $out;
+    }
+
+    /** How many processes wrote a profile (php -S workers that served a request). */
+    private function workers(string $dir): int
+    {
+        $n = 0;
+        foreach (glob("$dir/prof-*.json") ?: [] as $file) {
+            $p = json_decode((string) file_get_contents($file), true);
+            $n += is_array($p) && ($p['requests'] ?? 0) > 0 ? 1 : 0;
+        }
+        return max(1, $n);
+    }
+
+    /** Builtins that wait on something outside PHP: databases, files, the network, sleep. */
+    public static function waits(?string $class, string $name): bool
+    {
+        if ($class !== null) {
+            return (bool) preg_match('/^(PDO|PDOStatement|mysqli(_stmt|_result)?|SQLite3(Stmt|Result)?|Redis(Cluster)?|Memcached?|SoapClient|MongoDB\\\\Driver\\\\.*|SplFileObject|AMQP\\w+)$/i', $class);
+        }
+        $name = strtolower($name);
+        return (bool) preg_match('/^(mysqli_|pg_|sqlite_|oci_|odbc_|socket_|stream_(select|socket_|get_contents|copy)|curl_(exec|multi_exec|multi_select)|f(open|read|write|gets|getcsv|puts|lush|sockopen|passthru)$|file(_get_contents|_put_contents)?$|readfile$|u?sleep$|time_nanosleep$|mail$|dns_|gethostbyname|proc_close$|shell_exec$|exec$|system$|passthru$)/', $name);
     }
 }

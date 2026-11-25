@@ -78,9 +78,8 @@ final class Project
         throw new \RuntimeException("No function $id in the last scan. Run `fast-php scan -- php your-script.php` first.");
     }
 
-    /** @return array{script: string, args: list<string>, cwd: string} */
-    public function workload(): array
+    public function workload(): Workload\Workload
     {
-        return $this->state['workload'] ?? throw new \RuntimeException('No workload yet. Run `fast-php scan -- php your-script.php` first.');
+        return Workload\Workload::fromState($this->state['workload'] ?? throw new \RuntimeException('No workload yet. Run `fast-php scan -- php your-script.php` (or `fast-php scan --web requests.http`) first.'));
     }
 }

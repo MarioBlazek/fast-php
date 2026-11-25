@@ -17,22 +17,30 @@ fast-php is a PHP-first take on [fast-anything](https://github.com/EL4CTEO/fast-
 
 ## Status
 
-**Phase 2 is done** ([docs/phase-2.md](docs/phase-2.md)):
-- **`fastphp-std`:** PHP's builtins in Rust, fuzzed against PHP 8.2–8.5 in CI.
-- **More types:** PHPDoc types, and instance methods that only read `$this`.
-- **Parity:** exceptions and warnings must match the original.
-- **Recording:** a deriver that knows PHP's edge cases, and helpers found through Composer.
+**Phase 3 is done** ([docs/phase-3.md](docs/phase-3.md)): web apps.
+- **`scan --web requests.http`:** replays `.http`, URL-list or HAR requests against `php -S`, warmed up, with workers.
+- **Sharded recording:** across requests and workers.
+- **`bench`:** p50/p95/requests per second with and without the ports, and every response must be identical. `--url` does the same against your FPM, before and after.
+- **`install`:** checks each PHP-FPM can load the extension and writes its ini line.
+- **Laravel:** checked end to end in CI.
 
-The `fast-php` tool takes a PHP script from profile to an enabled Rust port ([docs/phase-1.md](docs/phase-1.md)). Phase 0's spikes are in [docs/phase-0.md](docs/phase-0.md), the plan in [docs/plan.md](docs/plan.md). Web workloads (FPM) are Phase 3, coding-agent runs Phase 4.
+Earlier phases:
+- [Phase 2](docs/phase-2.md): `fastphp-std` (PHP's builtins in Rust, fuzzed against PHP 8.2–8.5), PHPDoc types, instance methods, exception and warning parity.
+- [Phase 1](docs/phase-1.md): the CLI pipeline.
+- [Phase 0](docs/phase-0.md): spikes.
+
+The plan is in [docs/plan.md](docs/plan.md). Coding-agent runs are Phase 4.
 
 The examples, JIT on:
 
-| example | per call | whole script |
+| example | per call | whole run |
 |---|---:|---:|
 | [fuzzy-dedupe-cli](examples/fuzzy-dedupe-cli): `Fuzzy::findDuplicates` | 440 ms → 1.7 ms (261×) | 604 ms → 52 ms (11.5×) |
 | [invoice-report-cli](examples/invoice-report-cli): `Report::summary`, an instance method that is half builtins | 12.3 ms → 6.6 ms (1.9×) | 243 ms → 198 ms (1.2×) |
+| [shop-web](examples/shop-web): `Bundles::cheapest`, 39 requests via `php -S`, 2 workers | 3.3 ms → 0.32 ms (10×) | 54 ms → 15 ms (3.5×), p95 11.0 → 1.7 ms |
+| the same service in a fresh Laravel app | 1.6 ms → 0.17 ms (9.5×) | 39 ms → 22 ms (1.8×), p95 10.5 → 3.5 ms |
 
-All outputs are identical. Code that is mostly PHP loops gains the most; code that is mostly calls to builtins (already C) gains little, and `scan` says so.
+All outputs and responses are identical. Code that is mostly PHP loops gains the most; code that is mostly calls to builtins (already C) gains little, and `scan` says so.
 
 ## Usage
 
@@ -54,6 +62,15 @@ vendor/bin/fast-php bench                                   # whole app, with an
 vendor/bin/fast-php disable Fuzzy_findDuplicates            # source back byte for byte
 ```
 
+A web app is the same, with requests instead of a script:
+
+```sh
+vendor/bin/fast-php scan --web requests.http -- php -S localhost:8000 -t public
+vendor/bin/fast-php port Shop_Bundles_cheapest && vendor/bin/fast-php verify Shop_Bundles_cheapest && vendor/bin/fast-php enable Shop_Bundles_cheapest
+vendor/bin/fast-php bench                                   # two php -S servers: p50/p95/RPS, identical responses
+vendor/bin/fast-php install --write                         # conf.d ini for PHP-FPM, after checking it loads there
+```
+
 The prologue only calls the port when the extension is loaded (`php -d extension=.fast-php/build/libfastphp_app.so`), so a deploy without it runs the original PHP. `FAST_PHP_DISABLE=1` switches the ports off. A call whose arguments fall outside the port's types (a list with a gap, non-UTF-8 bytes, an int where floats were recorded) also runs the original PHP.
 
 Highlights from Phase 0, PHP 8.5, time per call:
@@ -71,7 +88,8 @@ Highlights from Phase 0, PHP 8.5, time per call:
 composer install
 vendor/bin/phpunit       # patcher, comparator, types, PHPDoc, analysis
 sh tests/std/run.sh      # fastphp-std against this PHP: differential fuzzing
-sh tests/e2e.sh          # the whole pipeline on both examples, each with a wrong port that must fail verify
+sh tests/e2e.sh          # the whole pipeline on every example, each with a wrong port that must fail verify
+sh tests/laravel/smoke.sh  # the web pipeline on a fresh Laravel app (needs network for composer)
 sh spike/run.sh          # Phase 0: exact round-trips, observer profiler, crossing costs
 ```
 
@@ -83,7 +101,9 @@ src/Analysis           php-parser: functions, call graph, blockers, ranking, PHP
 src/Patch              marked one-line prologues, removed byte for byte
 src/Port               type inference, crate scaffolding, TASK.md
 src/Verify             StrictComparator (=== with NAN and -0.0 handled)
-src/Cli                doctor, scan, port, verify, enable, disable, bench, status
+src/Workload           what runs: a CLI script, or requests replayed against php -S
+src/Web                request files (.http, URL lists, HAR), HTTP client, php -S with workers
+src/Cli                doctor, scan, port, verify, enable, disable, bench, install, status
 res/rec.php            the recorder (auto_prepend_file during `port`)
 res/replay.php         the PHP side of `verify`
 rust/fastphp-value     exact PHP values in Rust + fast zval reads/writes for generated glue

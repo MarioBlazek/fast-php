@@ -5,6 +5,11 @@
 // At shutdown it derives smaller and edge-case inputs from what it kept, lets the original PHP
 // answer them too, and writes everything to $FASTPHP_REC_DIR/rec-<pid>.jsonl.
 //
+// Under a web server, "shutdown" is the end of each request, and a worker serves many: each
+// request appends what it kept to its worker's shard, and `fast-php port` samples the merged
+// shards down to FASTPHP_REC_MAX. Only the first request that calls a function derives cases
+// for it, so a thousand requests don't derive the same edge cases a thousand times.
+//
 // Values are stored with serialize(), which keeps int vs float, key types and order, and binary
 // strings exactly. It never touches mt_rand(): the app's own random sequence stays the same.
 // Reservoir sampling and the derived cases after fast-anything's rec.php (MIT).
@@ -168,13 +173,33 @@ final class Rec
             foreach ($cases as $c) {
                 $lines .= self::line($id, $c, false);
             }
-            if (getenv('FASTPHP_REC_DERIVE') !== '0') {
+            if (getenv('FASTPHP_REC_DERIVE') !== '0' && self::firstToDerive($dir, $id)) {
                 foreach (self::derive($id, array_values($cases)) as $c) {
                     $lines .= self::line($id, $c, true);
                 }
             }
         }
-        file_put_contents($dir . '/rec-' . getmypid() . '.jsonl', $lines, FILE_APPEND);
+        $shard = $dir . '/rec-' . getmypid() . '.jsonl';
+        // A long web replay keeps appending; past this size, more samples add nothing.
+        if ($lines !== '' && (!is_file($shard) || filesize($shard) < self::SHARD_LIMIT)) {
+            file_put_contents($shard, $lines, FILE_APPEND | LOCK_EX);
+        }
+    }
+
+    private const SHARD_LIMIT = 256 << 20;
+
+    /** True for the first PHP request, across every worker, that gets to derive cases for $id. */
+    private static function firstToDerive(string $dir, string $id): bool
+    {
+        if (PHP_SAPI === 'cli') {
+            return true;
+        }
+        $lock = @fopen($dir . '/derived-' . md5($id), 'x');
+        if ($lock === false) {
+            return false;
+        }
+        fclose($lock);
+        return true;
     }
 
     private static function line(string $id, array $c, bool $derived): string

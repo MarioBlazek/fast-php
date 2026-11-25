@@ -21,6 +21,7 @@ final class Application extends Console
             new DisableCommand(),
             new BenchCommand(),
             new StatusCommand(),
+            new InstallCommand(),
         ]);
     }
 }
