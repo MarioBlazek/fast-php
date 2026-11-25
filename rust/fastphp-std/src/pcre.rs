@@ -245,8 +245,8 @@ pub fn preg_match(pattern: &[u8], subject: &[u8]) -> Result<Option<PhpArray>, Ph
     re.check(subject)?;
     let Some(m) = re.find(subject, 0, false)? else { return Ok(None) };
     let mut out = PhpArray::new();
-    for i in 0..m.count {
-        let v = piece(subject, m.groups[i]);
+    for (i, &g) in m.groups.iter().enumerate().take(m.count) {
+        let v = piece(subject, g);
         if let Some(Some(name)) = re.names.get(i) {
             out.insert(PhpKey::from_bytes(name.as_bytes()), v.clone());
         }
@@ -393,8 +393,8 @@ pub fn preg_replace_callback(
         let (s, e) = m.span();
         out.extend_from_slice(&subject[last..s]);
         let mut groups = PhpArray::new();
-        for i in 0..m.count {
-            let v = piece(subject, m.groups[i]);
+        for (i, &g) in m.groups.iter().enumerate().take(m.count) {
+            let v = piece(subject, g);
             if let Some(Some(name)) = re.names.get(i) {
                 groups.insert(PhpKey::from_bytes(name.as_bytes()), v.clone());
             }
