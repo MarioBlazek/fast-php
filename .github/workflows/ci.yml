@@ -5,7 +5,7 @@ on:
   pull_request:
 
 jobs:
-  spikes:
+  test:
     name: PHP ${{ matrix.php }} (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -21,9 +21,9 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: ffi
+          extensions: ffi, mbstring
           coverage: none
-          tools: none
+          tools: composer
       - name: Pin one LLVM for bindgen (Linux)
         if: runner.os == 'Linux'
         # ext-php-rs runs bindgen on PHP's headers. The runner has several LLVMs, and loading
@@ -53,5 +53,11 @@ jobs:
       - name: Rust tests
         working-directory: rust
         run: cargo test --release
+      - name: Composer install
+        run: composer install --no-interaction --no-progress
+      - name: PHPUnit
+        run: vendor/bin/phpunit
       - name: Spikes (round-trip, observer profiler, crossing cost)
         run: sh spike/run.sh
+      - name: End to end (scan, wrong port rejected, port, verify, enable, bench, disable)
+        run: sh tests/e2e.sh

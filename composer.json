@@ -1,0 +1,25 @@
+{
+    "name": "marioblazek/fast-php",
+    "description": "Find the slow 5% of a PHP app, port only that to Rust, prove it behaves the same, and swap it in as a native extension.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["performance", "rust", "extension", "profiler", "dev"],
+    "require": {
+        "php": ">=8.2",
+        "nikic/php-parser": "^5.0",
+        "symfony/console": "^6.4 || ^7.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.0"
+    },
+    "autoload": {
+        "psr-4": {"FastPhp\\": "src/"}
+    },
+    "autoload-dev": {
+        "psr-4": {"FastPhp\\Tests\\": "tests/"}
+    },
+    "bin": ["bin/fast-php"],
+    "config": {
+        "sort-packages": true
+    }
+}

@@ -56,12 +56,21 @@ foreach (['fastphp_spike_roundtrip', 'fastphp_glue_roundtrip'] as $fn) {
         echo "ok   $fn refuses objects: ", $e->getMessage(), "\n";
     }
 }
-// A gap left by unset() is skipped, like foreach does.
+// A gap left by unset() is skipped, like foreach does, and keeps its keys.
 $holes = [1, 2, 3, 4];
 unset($holes[1]);
 $fails += fastphp_glue_roundtrip($holes) === $holes ? 0 : 1;
-$fails += fastphp_glue_sum($holes) === 8 ? 0 : 1;
+$fails += fastphp_glue_sum(array_values($holes)) === 8 ? 0 : 1;
 echo "ok   arrays with unset() holes\n";
+// Typed glue never coerces: an array with a gap is not a list, an int is not a float.
+foreach (['list with a gap' => $holes, 'string keys' => ['a' => 1], 'float in an int list' => [1, 2.0]] as $what => $v) {
+    try {
+        fastphp_glue_sum($v);
+        $fails++; echo "FAIL  list<int> accepted $what\n";
+    } catch (TypeError) {
+        echo "ok   list<int> refuses $what\n";
+    }
+}
 
 printf("\n%d cases, %d failed through the extension, %d lost through JSON\n", count($cases), $fails, $jsonLoses);
 exit($fails ? 1 : 0);

@@ -2,3 +2,5 @@
 /vendor/
 /.fast-php/
 .DS_Store
+/.phpunit.cache/
+/composer.lock

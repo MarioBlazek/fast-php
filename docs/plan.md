@@ -1,7 +1,7 @@
 # fast-php: plan
 
-> Phase 0 is done; its results are in [phase-0.md](phase-0.md) and changed a few details below
-> (marked **[phase 0]**).
+> Phases 0 and 1 are done; their results are in [phase-0.md](phase-0.md) and
+> [phase-1.md](phase-1.md), and changed a few details below (marked **[phase 0]** / **[phase 1]**).
 
 ## Context
 
@@ -110,9 +110,15 @@ Project working dir: `.fast-php/` holds `state.json`, `ports/<id>/` (one crate e
 - **[phase 0]** `doctor` warns about Xdebug, and every timed run uses `php -n` plus the extensions it needs: Xdebug made
   the example app 3.3× slower.
 
-**Phase 1: CLI MVP, end to end on the upstream PHP example**
+**Phase 1: CLI MVP, end to end on the upstream PHP example. Done, see [phase-1.md](phase-1.md).**
 - Analysis (php-parser), observer profile + fallback, JIT A/B, serialize recorder, scaffold, PHP-side verify, enable/disable, CLI bench, state, doctor.
 - Port `examples/fuzzy-dedupe-php` plus its reference `port.rs` (adapted to the typed ext glue) as the CI fixture.
+- **[phase 1]** Conversions in `fastphp-value` are exact (no int→float, `Vec` only from lists), and generated glue returns
+  null for any argument outside its types, so the prologue runs the original PHP. That makes types inferred from the
+  recordings safe. It needs a result that is never null; otherwise the glue has no fallback and uses declared types only.
+- **[phase 1]** Cross-file helpers are already resolved (every file the profile touched is parsed); the edge-case
+  deriver exists in a first form (sizes, shrunk elements, whitespace/case decorations, int neighbours).
+- **[phase 1]** The source-instrumentation profiler fallback is not built: the observer profiler has worked everywhere so far.
 
 **Phase 2: correctness depth**
 - fastphp-std + differential fuzz, PHPDoc types, cross-file helpers, readonly instance methods, edge-case deriver, exception parity.

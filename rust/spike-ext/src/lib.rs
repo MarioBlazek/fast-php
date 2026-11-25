@@ -53,7 +53,7 @@ pub fn fastphp_spike_findDuplicates(names: Vec<String>, maxDistance: i64) -> Vec
 #[php_function]
 #[php(name = "fastphp_glue_sum")]
 pub fn glue_sum(xs: &Zval) -> Result<i64, PhpException> {
-    let xs: Vec<i64> = arg(xs, 1, "xs", "array")?;
+    let xs: Vec<i64> = arg(xs, 1, "xs", "list<int>")?;
     Ok(xs.iter().sum())
 }
 
@@ -69,7 +69,7 @@ pub fn glue_levenshtein(a: &Zval, b: &Zval) -> Result<i64, PhpException> {
 #[php_function]
 #[php(name = "fastphp_glue_findDuplicates")]
 pub fn glue_find_duplicates(names: &Zval, max: &Zval) -> Result<Ret<Vec<[i64; 2]>>, PhpException> {
-    let names: Vec<String> = arg(names, 1, "names", "array")?;
+    let names: Vec<String> = arg(names, 1, "names", "list<string>")?;
     let max: i64 = arg(max, 2, "maxDistance", "int")?;
     Ok(Ret(fuzzy::find_duplicates(&names, max).into_iter().map(|p| [p[0], p[1]]).collect()))
 }

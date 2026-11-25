@@ -2,6 +2,12 @@ fast-php builds on ideas and code from fast-anything
 (https://github.com/EL4CTEO/fast-anything), MIT licensed:
 
 - examples/fuzzy-dedupe-cli/app.php and fuzzy.php are fast-anything's examples/fuzzy-dedupe-php.
-- rust/spike-ext/src/fuzzy.rs follows fast-anything's examples/fuzzy-dedupe-php/reference/port.rs.
+- rust/spike-ext/src/fuzzy.rs and examples/fuzzy-dedupe-cli/reference/port.rs follow fast-anything's
+  examples/fuzzy-dedupe-php/reference/port.rs.
+- src/Analysis/Ranker.php ports the ranking in fast-anything's src/hotspot.rs (outermost portable
+  caller, the 2% threshold).
+- src/Analysis/Blockers.php starts from the I/O and non-determinism lists in src/php/describe.php.
+- res/rec.php's reservoir sampling and derived inputs follow src/php/rec.php.
+- src/Port/Task.php follows the structure of task_md in src/native.rs.
 - rust/spike-ffi and the Upstream class in spike/crossing.php reproduce fast-anything's PHP bridge
   (src/native.rs glue_rs, src/php/bridge.php) so the two bridges can be measured side by side.

@@ -90,7 +90,9 @@ pub fn each<'a>(ht: &'a zend_array, mut f: impl FnMut(RawKey<'a>, &'a Zval) -> b
 }
 
 /// Rust values a port can take, read straight from a zval. None means the value doesn't fit
-/// the type (the glue then throws a TypeError naming the argument).
+/// the type exactly; the glue then lets the original PHP handle the call (or throws a TypeError
+/// naming the argument when it has no fallback). Conversions never coerce: an int is not a
+/// float, an array with string keys or gaps is not a Vec.
 pub trait FromPhp: Sized {
     fn from_php(zv: &Zval) -> Option<Self>;
 }
@@ -105,15 +107,12 @@ impl FromPhp for i64 {
 }
 
 impl FromPhp for f64 {
-    /// Like a PHP float parameter: ints are accepted and widened.
+    /// Floats only: an int would come back as a float where PHP keeps an int.
     #[inline(always)]
+    #[allow(clippy::unnecessary_lazy_evaluations)]
     fn from_php(zv: &Zval) -> Option<Self> {
         let zv = deref(zv);
-        match tag(zv) {
-            IS_DOUBLE => Some(unsafe { zv.value.dval }),
-            IS_LONG => Some(unsafe { zv.value.lval } as f64),
-            _ => None,
-        }
+        (tag(zv) == IS_DOUBLE).then(|| unsafe { zv.value.dval })
     }
 }
 
@@ -156,17 +155,18 @@ impl<T: FromPhp> FromPhp for Option<T> {
 }
 
 impl<T: FromPhp> FromPhp for Vec<T> {
-    /// The values of any array, in order (keys dropped, like array_values()).
+    /// A list only (keys 0, 1, 2, … in order, as array_is_list() says): dropping other keys
+    /// would change what PHP code that reads them sees.
     fn from_php(zv: &Zval) -> Option<Self> {
         let ht = array(zv)?;
         let mut out = Vec::with_capacity(ht.nNumOfElements as usize);
         let mut ok = true;
-        each(ht, |_, v| match T::from_php(v) {
-            Some(x) => {
+        each(ht, |k, v| match (k, T::from_php(v)) {
+            (RawKey::Int(i), Some(x)) if i == out.len() as i64 => {
                 out.push(x);
                 true
             }
-            None => {
+            _ => {
                 ok = false;
                 false
             }
@@ -216,7 +216,7 @@ impl FromPhp for PhpArray {
     }
 }
 
-/// Tuples for fixed-shape rows like [$i, $j] or [$name, $score].
+/// Tuples for fixed-shape rows like [$i, $j] or [$name, $score]: lists of exactly that length.
 macro_rules! tuple_from_php {
     ($($t:ident),+) => {
         impl<$($t: FromPhp),+> FromPhp for ($($t,)+) {
@@ -224,12 +224,14 @@ macro_rules! tuple_from_php {
                 let ht = array(zv)?;
                 let mut vals: [Option<&Zval>; { [$(stringify!($t)),+].len() }] = Default::default();
                 let mut n = 0;
-                each(ht, |_, v| {
+                let mut list = true;
+                each(ht, |k, v| {
+                    list &= matches!(k, RawKey::Int(i) if i == n as i64);
                     if n < vals.len() { vals[n] = Some(v); }
                     n += 1;
-                    n <= vals.len()
+                    list && n <= vals.len()
                 });
-                if n != vals.len() { return None; }
+                if !list || n != vals.len() { return None; }
                 let mut it = vals.into_iter();
                 Some(($($t::from_php(it.next()??)?,)+))
             }

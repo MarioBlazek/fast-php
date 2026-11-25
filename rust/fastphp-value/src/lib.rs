@@ -354,6 +354,26 @@ impl PhpError {
         Self::new("ValueError", message)
     }
 
+    /// Not an error: the port declines this input and the original PHP runs instead. Only
+    /// generated glue with a fallback (functions that never return null) can honor it.
+    pub fn fallback() -> Self {
+        Self::new("", "")
+    }
+
+    pub fn is_fallback(&self) -> bool {
+        self.class.is_empty()
+    }
+
+    /// A port panicked: report it as a PHP Error instead of unwinding into the engine.
+    pub fn panicked(port: &str, payload: Box<dyn std::any::Any + Send>) -> Self {
+        let msg = payload
+            .downcast_ref::<&str>()
+            .map(|s| s.to_string())
+            .or_else(|| payload.downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "unknown panic".into());
+        Self::new("Error", format!("fast-php: the port of {port} panicked: {msg}"))
+    }
+
     pub fn type_error(message: impl Into<String>) -> Self {
         Self::new("TypeError", message)
     }
